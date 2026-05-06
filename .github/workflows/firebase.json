@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "site": "mondiale2026-prono",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      ".github/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/mondiale2026.html"
+      }
+    ]
+  }
+}
