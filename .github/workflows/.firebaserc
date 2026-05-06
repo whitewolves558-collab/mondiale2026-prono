@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "mondiale2026-prono"
+  },
+  "targets": {
+    "mondiale2026-prono": {
+      "hosting": {
+        "mondiale2026-prono": [
+          "mondiale2026-prono"
+        ]
+      }
+    }
+  }
+}
