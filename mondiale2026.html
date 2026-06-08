@@ -458,6 +458,7 @@
   <button onclick="showSection('risultati')">📋 Risultati</button>
   <button onclick="showSection('eliminazione')">🥊 Knockout</button>
   <button onclick="showSection('calendario')">📅 Calendario</button>
+  <button onclick="showSection('altrui')">👀 Altrui</button>
   <button onclick="showSection('profilo')">👤 Profilo</button>
   <button onclick="showSection('stampa')">🖨️ Stampa</button>
   <button id="nav-admin" style="display:none" onclick="showSection('admin')">⚙️ Admin</button>
@@ -525,6 +526,19 @@
     </div>
   </div>
 
+  <!-- ── PRONOSTICI ALTRUI ── -->
+  <div id="sec-altrui" class="section">
+    <div class="card">
+      <div class="card-title">👀 Pronostici degli Altri</div>
+      <div class="giornata-nav">
+        <button class="btn btn-outline btn-sm" onclick="changeGiornataAltrui(-1)">◀</button>
+        <span class="gn-label" id="altrui-giornata-label">Giornata 1</span>
+        <button class="btn btn-outline btn-sm" onclick="changeGiornataAltrui(+1)">▶</button>
+      </div>
+      <div id="altrui-content"><div class="loading-overlay"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
   <!-- ── PROFILO ── -->
   <div id="sec-profilo" class="section">
     <div class="card">
@@ -556,6 +570,7 @@
         <button class="inner-tab" onclick="adminTab('calendario-admin')">Calendario</button>
         <button class="inner-tab" onclick="adminTab('partite')">Partite</button>
         <button class="inner-tab" onclick="adminTab('risultati-admin')">Risultati</button>
+        <button class="inner-tab" onclick="adminTab('visibilita-admin')">👁 Visibilità</button>
         <button class="inner-tab" onclick="adminTab('knockout-admin')">Knockout</button>
       </div>
       <div id="admin-setup" class="admin-section">
@@ -616,6 +631,15 @@
         <div id="partite-msg" class="mt8"></div>
         <button class="btn btn-gold mt14" onclick="savePartite()">💾 Salva Partite</button>
       </div>
+      <div id="admin-visibilita-admin" class="admin-section" style="display:none">
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;line-height:1.6">
+          Controlla quando i pronostici degli altri giocatori diventano visibili.<br>
+          Finché non abiliti una giornata, solo tu (admin) vedi i pronostici altrui.
+        </div>
+        <div id="visibilita-list"></div>
+        <div id="visibilita-msg" class="mt8"></div>
+      </div>
+
       <div id="admin-risultati-admin" class="admin-section" style="display:none">
         <div class="giornata-nav">
           <button class="btn btn-outline btn-sm" onclick="changeGiornataRisAdmin(-1)">◀</button>
@@ -653,6 +677,7 @@ let pronostici = {};
 let koData = {};
 let selezione = {};
 let calendario = {}; // sfide tra giocatori per giornata
+let visibilita = {}; // {g1: true/false} - admin controlla quando mostrare pronostici
 
 let currentGiornata = 1;
 let currentGiornataRis = 1;
@@ -742,8 +767,8 @@ const PARTITE_MONDIALE = {
     m20:{h:'Giordania',a:'Argentina',gruppo:'Gruppo J',data:'27 Giu'},
     m21:{h:'Colombia',a:'Portogallo',gruppo:'Gruppo K',data:'28 Giu'},
     m22:{h:'R.D. del Congo',a:'Uzbekistan',gruppo:'Gruppo K',data:'28 Giu'},
-    m23:{h:'Croazia',a:'Inghilterra',gruppo:'Gruppo L',data:'27 Giu'},
-    m24:{h:'Panama',a:'Ghana',gruppo:'Gruppo L',data:'27 Giu'}
+    m23:{h:'Croazia',a:'Ghana',gruppo:'Gruppo L',data:'27 Giu'},
+    m24:{h:'Panama',a:'Inghilterra',gruppo:'Gruppo L',data:'27 Giu'}
   }
 };
 
@@ -862,10 +887,10 @@ async function startApp() {
 // ══════════════════════════════════════════════════
 async function loadAll() {
   try {
-    const [cfg, pl, par, ris, pro, ko, sel, cal] = await Promise.all([
+    const [cfg, pl, par, ris, pro, ko, sel, cal, vis] = await Promise.all([
       fbGet('/config'), fbGet('/players'), fbGet('/partite'),
       fbGet('/risultati'), fbGet('/pronostici'), fbGet('/knockout'),
-      fbGet('/selezione'), fbGet('/calendario')
+      fbGet('/selezione'), fbGet('/calendario'), fbGet('/visibilita')
     ]);
     if (cfg) config = cfg;
     players = pl || {};
@@ -875,6 +900,7 @@ async function loadAll() {
     koData = ko || {};
     selezione = sel || {};
     calendario = cal || {};
+    visibilita = vis || {};
   } catch(e) { console.error('Load error', e); }
 }
 
@@ -885,7 +911,7 @@ function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
-  const idx = ['classifica','pronostici','risultati','eliminazione','calendario','profilo','stampa','admin'].indexOf(id);
+  const idx = ['classifica','pronostici','risultati','eliminazione','calendario','altrui','profilo','stampa','admin'].indexOf(id);
   const btns = document.querySelectorAll('#nav button');
   if (idx>=0 && btns[idx]) btns[idx].classList.add('active');
 
@@ -894,6 +920,7 @@ function showSection(id) {
   if (id==='risultati') renderRisultati();
   if (id==='eliminazione') renderKnockout();
   if (id==='calendario') renderCalendario();
+  if (id==='altrui') renderAltrui();
   if (id==='stampa') renderStampaMenu();
   if (id==='profilo') renderProfilo();
   if (id==='admin') { renderAdminSetup(); renderAdminGiocatori(); }
@@ -1542,6 +1569,129 @@ function handleBackspace(event, el, prevId) {
   }
 }
 
+
+// ══════════════════════════════════════════════════
+// PRONOSTICI ALTRUI
+// ══════════════════════════════════════════════════
+
+let currentGiornataAltrui = 1;
+
+function changeGiornataAltrui(d) {
+  const max = config.giornate || 3;
+  currentGiornataAltrui = Math.max(1, Math.min(max, currentGiornataAltrui + d));
+  renderAltrui();
+}
+
+function renderAltrui() {
+  const gKey = 'g' + currentGiornataAltrui;
+  document.getElementById('altrui-giornata-label').textContent = 'Giornata ' + currentGiornataAltrui;
+  const el = document.getElementById('altrui-content');
+
+  // Controlla visibilità: admin vede sempre, altri solo se abilitato
+  if (!isAdmin && !visibilita[gKey]) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;font-family:Oswald;font-size:0.85rem;letter-spacing:0.1em;color:var(--grigio)">⏳ I pronostici di questa giornata non sono ancora visibili.<br>L\'admin li renderà disponibili a fine giornata.</div>';
+    return;
+  }
+
+  const matchesG = partite[gKey] || {};
+  const ris = risultati[gKey] || {};
+  const mids = Object.keys(matchesG);
+  const sel = selezione[gKey] || {};
+  const selMids = Object.keys(sel).filter(mid => sel[mid]);
+  const midsToShow = selMids.length ? selMids : mids;
+
+  if (!midsToShow.length) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--grigio);font-family:Oswald;font-size:0.85rem">Nessuna partita per questa giornata</div>';
+    return;
+  }
+
+  const allPlayers = Object.keys(players).sort();
+  let html = '';
+
+  midsToShow.forEach(mid => {
+    const m = matchesG[mid] || {};
+    const r = ris[mid] || {};
+    const done = r.h != null && r.a != null;
+
+    html += '<div class="match-card" style="margin-bottom:14px">';
+    html += '<div class="match-info">' + (m.gruppo || '') + (m.data ? ' · ' + m.data : '') + '</div>';
+    html += '<div class="match-teams"><div class="team">' + (m.h || '?') + '</div><div class="vs">VS</div><div class="team right">' + (m.a || '?') + '</div></div>';
+
+    if (done) {
+      html += '<div style="text-align:center;font-family:Oswald;font-size:1.3rem;font-weight:700;color:var(--oro2);margin:6px 0">' + r.h + ' – ' + r.a + '</div>';
+    } else {
+      html += '<div style="text-align:center;font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin:4px 0">Risultato non ancora disponibile</div>';
+    }
+
+    // Tabella pronostici di tutti i giocatori
+    html += '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">';
+    html += '<div style="font-family:Oswald;font-size:0.65rem;letter-spacing:0.15em;color:var(--oro);text-transform:uppercase;margin-bottom:6px">Pronostici</div>';
+
+    allPlayers.forEach(p => {
+      const mio = ((pronostici[gKey] || {})[p] || {})[mid] || {};
+      const hasPro = mio.h != null && mio.a != null;
+      let badge = '';
+      if (done && hasPro) {
+        const rh = parseInt(r.h), ra = parseInt(r.a);
+        const mh = parseInt(mio.h), ma = parseInt(mio.a);
+        const signR = rh > ra ? '1' : (rh === ra ? 'X' : '2');
+        const signM = mh > ma ? '1' : (mh === ma ? 'X' : '2');
+        if (mh === rh && ma === ra) badge = '<span class="prono-result prono-exact">+3</span>';
+        else if (signM === signR) badge = '<span class="prono-result prono-sign">+1</span>';
+        else badge = '<span class="prono-result prono-wrong">0</span>';
+      }
+      const isMe = p === currentUser;
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(201,168,76,0.06)">'
+        + '<span style="font-family:Oswald;font-size:0.82rem;color:' + (isMe ? 'var(--oro2)' : 'var(--text)') + '">' + p + (isMe ? ' ★' : '') + '</span>'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+        + (hasPro ? '<span style="font-family:Oswald;font-weight:700;color:var(--text)">' + mio.h + ' – ' + mio.a + '</span>' : '<span style="color:var(--grigio);font-size:0.75rem;font-family:Oswald">–</span>')
+        + badge
+        + '</div>'
+        + '</div>';
+    });
+
+    html += '</div></div>';
+  });
+
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN – VISIBILITÀ PRONOSTICI
+// ══════════════════════════════════════════════════
+
+function renderVisibilitaAdmin() {
+  const maxG = config.giornate || 6;
+  let html = '';
+  for (let g = 1; g <= maxG; g++) {
+    const gKey = 'g' + g;
+    const abilitata = visibilita[gKey] === true;
+    const haPartite = Object.keys(partite[gKey] || {}).length > 0;
+    if (!haPartite) continue;
+    html += '<div class="player-chip" style="margin-bottom:8px">'
+      + '<div><div class="pname">Giornata ' + g + '</div>'
+      + '<div class="pgirone">' + (abilitata ? '✅ Visibile a tutti' : '🔒 Solo admin') + '</div></div>'
+      + '<button class="btn btn-sm ' + (abilitata ? 'btn-danger' : 'btn-gold') + '" onclick="toggleVisibilita("' + gKey + '",' + !abilitata + ')">'
+      + (abilitata ? 'Nascondi' : 'Rendi visibile') + '</button>'
+      + '</div>';
+  }
+  if (!html) html = '<div style="color:var(--grigio);font-family:Oswald;font-size:0.8rem">Nessuna giornata con partite caricate</div>';
+  document.getElementById('visibilita-list').innerHTML = html;
+}
+
+async function toggleVisibilita(gKey, stato) {
+  try {
+    await fbPatch('/visibilita', { [gKey]: stato });
+    visibilita[gKey] = stato;
+    renderVisibilitaAdmin();
+    const msg = stato ? '✅ Pronostici giornata visibili a tutti!' : '🔒 Pronostici nascosti';
+    document.getElementById('visibilita-msg').innerHTML = '<div class="msg ' + (stato ? 'msg-ok' : 'msg-info') + '">' + msg + '</div>';
+    setTimeout(() => document.getElementById('visibilita-msg').innerHTML = '', 3000);
+  } catch(e) {
+    document.getElementById('visibilita-msg').innerHTML = '<div class="msg msg-err">❌ Errore</div>';
+  }
+}
+
 // ══════════════════════════════════════════════════
 // CALENDARIO SFIDE TRA GIOCATORI
 // ══════════════════════════════════════════════════
@@ -1904,6 +2054,7 @@ function adminTab(id) {
   if (id==='risultati-admin') renderRisAdmin();
   if (id==='knockout-admin') renderKoAdmin();
   if (id==='calendario-admin') renderCalAdminPreview();
+  if (id==='visibilita-admin') renderVisibilitaAdmin();
 }
 
 // ══════════════════════════════════════════════════
