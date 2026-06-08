@@ -454,11 +454,11 @@
 
 <div id="nav">
   <button class="active" onclick="showSection('classifica')">🏆 Classifica</button>
-  <button onclick="showSection('pronostici')">⚽ Pronostici</button>
+  <button onclick="showSection('pronostici')">⚽ I Miei Pronostici</button>
   <button onclick="showSection('risultati')">📋 Risultati</button>
   <button onclick="showSection('eliminazione')">🥊 Knockout</button>
   <button onclick="showSection('calendario')">📅 Calendario</button>
-  <button onclick="showSection('altrui')">👀 Altrui</button>
+  <button onclick="showSection('altrui)'">👥 Altri Giocatori</button>
   <button onclick="showSection('profilo')">👤 Profilo</button>
   <button onclick="showSection('stampa')">🖨️ Stampa</button>
   <button id="nav-admin" style="display:none" onclick="showSection('admin')">⚙️ Admin</button>
@@ -474,7 +474,7 @@
   <!-- ── PRONOSTICI ── -->
   <div id="sec-pronostici" class="section">
     <div class="card">
-      <div class="card-title">⚽ I Tuoi Pronostici</div>
+      <div class="card-title">⚽ I Miei Pronostici</div>
       <div class="giornata-nav">
         <button class="btn btn-outline btn-sm" onclick="changeGiornata(-1)">◀</button>
         <span class="gn-label" id="prono-giornata-label">Giornata 1</span>
@@ -529,7 +529,7 @@
   <!-- ── PRONOSTICI ALTRUI ── -->
   <div id="sec-altrui" class="section">
     <div class="card">
-      <div class="card-title">👀 Pronostici degli Altri</div>
+      <div class="card-title">👥 Altri Giocatori</div>
       <div class="giornata-nav">
         <button class="btn btn-outline btn-sm" onclick="changeGiornataAltrui(-1)">◀</button>
         <span class="gn-label" id="altrui-giornata-label">Giornata 1</span>
@@ -1587,73 +1587,100 @@ function renderAltrui() {
   document.getElementById('altrui-giornata-label').textContent = 'Giornata ' + currentGiornataAltrui;
   const el = document.getElementById('altrui-content');
 
-  // Controlla visibilità: admin vede sempre, altri solo se abilitato
   if (!isAdmin && !visibilita[gKey]) {
-    el.innerHTML = '<div style="text-align:center;padding:24px;font-family:Oswald;font-size:0.85rem;letter-spacing:0.1em;color:var(--grigio)">⏳ I pronostici di questa giornata non sono ancora visibili.<br>L\'admin li renderà disponibili a fine giornata.</div>';
+    el.innerHTML = '<div style="text-align:center;padding:24px;font-family:Oswald;font-size:0.85rem;letter-spacing:0.1em;color:var(--grigio)">&#x23F3; I pronostici di questa giornata non sono ancora visibili.<br>L\'admin li renderà disponibili a fine giornata.</div>';
     return;
   }
 
   const matchesG = partite[gKey] || {};
   const ris = risultati[gKey] || {};
-  const mids = Object.keys(matchesG);
   const sel = selezione[gKey] || {};
   const selMids = Object.keys(sel).filter(mid => sel[mid]);
-  const midsToShow = selMids.length ? selMids : mids;
+  const midsToShow = selMids.length ? selMids : Object.keys(matchesG);
+  const gironi = config.gironi || [];
 
   if (!midsToShow.length) {
     el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--grigio);font-family:Oswald;font-size:0.85rem">Nessuna partita per questa giornata</div>';
     return;
   }
 
-  const allPlayers = Object.keys(players).sort();
   let html = '';
 
-  midsToShow.forEach(mid => {
-    const m = matchesG[mid] || {};
-    const r = ris[mid] || {};
-    const done = r.h != null && r.a != null;
+  // Ciclo per ogni girone A, B, C, D, E...
+  gironi.forEach((gName, gi) => {
+    const gTag = 'G' + (gi + 1);
+    const playersInG = Object.keys(players)
+      .filter(p => players[p].girone === gTag)
+      .sort();
+    if (!playersInG.length) return;
 
-    html += '<div class="match-card" style="margin-bottom:14px">';
-    html += '<div class="match-info">' + (m.gruppo || '') + (m.data ? ' · ' + m.data : '') + '</div>';
-    html += '<div class="match-teams"><div class="team">' + (m.h || '?') + '</div><div class="vs">VS</div><div class="team right">' + (m.a || '?') + '</div></div>';
+    html += '<div style="margin-bottom:18px">';
+    html += '<div style="font-family:Cinzel,serif;font-size:0.8rem;font-weight:700;color:var(--oro);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)">Girone ' + (gName || gTag) + '</div>';
 
-    if (done) {
-      html += '<div style="text-align:center;font-family:Oswald;font-size:1.3rem;font-weight:700;color:var(--oro2);margin:6px 0">' + r.h + ' – ' + r.a + '</div>';
-    } else {
-      html += '<div style="text-align:center;font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin:4px 0">Risultato non ancora disponibile</div>';
-    }
-
-    // Tabella pronostici di tutti i giocatori
-    html += '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">';
-    html += '<div style="font-family:Oswald;font-size:0.65rem;letter-spacing:0.15em;color:var(--oro);text-transform:uppercase;margin-bottom:6px">Pronostici</div>';
-
-    allPlayers.forEach(p => {
-      const mio = ((pronostici[gKey] || {})[p] || {})[mid] || {};
-      const hasPro = mio.h != null && mio.a != null;
-      let badge = '';
-      if (done && hasPro) {
-        const rh = parseInt(r.h), ra = parseInt(r.a);
-        const mh = parseInt(mio.h), ma = parseInt(mio.a);
-        const signR = rh > ra ? '1' : (rh === ra ? 'X' : '2');
-        const signM = mh > ma ? '1' : (mh === ma ? 'X' : '2');
-        if (mh === rh && ma === ra) badge = '<span class="prono-result prono-exact">+3</span>';
-        else if (signM === signR) badge = '<span class="prono-result prono-sign">+1</span>';
-        else badge = '<span class="prono-result prono-wrong">0</span>';
-      }
+    // Giocatori in fila orizzontale con chip cliccabili
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+    playersInG.forEach(p => {
       const isMe = p === currentUser;
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(201,168,76,0.06)">'
-        + '<span style="font-family:Oswald;font-size:0.82rem;color:' + (isMe ? 'var(--oro2)' : 'var(--text)') + '">' + p + (isMe ? ' ★' : '') + '</span>'
-        + '<div style="display:flex;align-items:center;gap:8px">'
-        + (hasPro ? '<span style="font-family:Oswald;font-weight:700;color:var(--text)">' + mio.h + ' – ' + mio.a + '</span>' : '<span style="color:var(--grigio);font-size:0.75rem;font-family:Oswald">–</span>')
-        + badge
-        + '</div>'
-        + '</div>';
+      html += '<button onclick="togglePlayerAccordion(\'' + gTag + '_' + p.replace(/'/g,"_") + '\')" '
+        + 'style="background:' + (isMe ? 'rgba(201,168,76,0.25)' : 'rgba(201,168,76,0.08)') + ';'
+        + 'border:1px solid ' + (isMe ? 'var(--border2)' : 'var(--border)') + ';'
+        + 'border-radius:20px;padding:5px 12px;font-family:Oswald;font-size:0.78rem;'
+        + 'letter-spacing:0.08em;color:' + (isMe ? 'var(--oro2)' : 'var(--text)') + ';cursor:pointer;">'
+        + p + (isMe ? ' ★' : '') + ' ▾'
+        + '</button>';
+    });
+    html += '</div>';
+
+    // Accordion per ogni giocatore
+    playersInG.forEach(p => {
+      const accId = 'acc_' + gTag + '_' + p.replace(/'/g,'_');
+      html += '<div id="' + accId + '" style="display:none;background:rgba(201,168,76,0.04);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:6px">';
+      html += '<div style="font-family:Oswald;font-size:0.8rem;font-weight:600;color:var(--oro2);margin-bottom:10px;letter-spacing:0.1em">' + p + '</div>';
+
+      midsToShow.forEach(mid => {
+        const m = matchesG[mid] || {};
+        const r = ris[mid] || {};
+        const mio = ((pronostici[gKey] || {})[p] || {})[mid] || {};
+        const hasPro = mio.h != null && mio.a != null;
+        const done = r.h != null && r.a != null;
+
+        let badge = '';
+        if (done && hasPro) {
+          const rh=parseInt(r.h), ra=parseInt(r.a), mh=parseInt(mio.h), ma=parseInt(mio.a);
+          const signR=rh>ra?'1':(rh===ra?'X':'2');
+          const signM=mh>ma?'1':(mh===ma?'X':'2');
+          if (mh===rh && ma===ra) badge='<span class="prono-result prono-exact">+3</span>';
+          else if (signM===signR) badge='<span class="prono-result prono-sign">+1</span>';
+          else badge='<span class="prono-result prono-wrong">0</span>';
+        }
+
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(201,168,76,0.07);gap:4px">';
+        // Partita
+        html += '<div style="flex:1;min-width:0">'
+          + '<div style="font-family:Oswald;font-size:0.7rem;color:var(--grigio);letter-spacing:0.08em">' + (m.h||'?') + ' – ' + (m.a||'?') + '</div>'
+          + (done ? '<div style="font-family:Oswald;font-size:0.68rem;color:var(--verde4)">Ris: ' + r.h + '-' + r.a + '</div>' : '')
+          + '</div>';
+        // Pronostico
+        html += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
+          + (hasPro ? '<span style="font-family:Oswald;font-weight:700;font-size:0.9rem;color:var(--text)">' + mio.h + ' – ' + mio.a + '</span>' : '<span style="color:var(--grigio);font-size:0.75rem;font-family:Oswald">–</span>')
+          + badge
+          + '</div>';
+        html += '</div>';
+      });
+
+      html += '</div>'; // fine accordion
     });
 
-    html += '</div></div>';
+    html += '</div>'; // fine girone
   });
 
   el.innerHTML = html;
+}
+
+function togglePlayerAccordion(id) {
+  const el = document.getElementById('acc_' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 // ══════════════════════════════════════════════════
