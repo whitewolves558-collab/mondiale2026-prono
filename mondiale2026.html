@@ -1600,7 +1600,8 @@ function renderCalendario() {
 
 function buildCalendarioHTML() {
   const gironi = config.gironi || [];
-  const maxG = config.giornate || 3;
+  const primoGirone = Object.keys(calendario)[0];
+  const maxG = primoGirone ? Object.keys(calendario[primoGirone]).length : 3;
   const scores = calcClassifica();
   let html = '';
   for (let g=1; g<=maxG; g++) {
@@ -1644,34 +1645,40 @@ function stampaClassifica() {
 }
 
 function stampaSelezione() {
-  const maxG = config.giornate || 3;
+  // Usa solo le giornate che hanno partite reali caricate
+  const giornateReali = Object.keys(partite).map(k=>parseInt(k.replace('g',''))).filter(Boolean).sort((a,b)=>a-b);
   let html = '<div style="font-family:serif;padding:20px;color:#000"><h1 style="text-align:center;margin-bottom:20px">Partite Selezionate - '+(config.nome||'Mondiale 2026')+'</h1>';
-  for (let g=1; g<=maxG; g++) {
+  if (!giornateReali.length) { html+='<p style="color:#999">Nessuna partita caricata</p>'; }
+  giornateReali.forEach(g => {
     const gKey='g'+g; const sel=selezione[gKey]||{}; const par=partite[gKey]||{};
     const selMids=Object.keys(sel).filter(mid=>sel[mid]);
+    if (!selMids.length && !Object.keys(par).length) return;
     html+='<h2 style="margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px">Giornata '+g+'</h2>';
-    if (!selMids.length){html+='<p style="color:#999;font-size:0.85rem">Nessuna partita selezionata</p>';continue;}
+    if (!selMids.length){html+='<p style="color:#999;font-size:0.85rem">Nessuna partita selezionata</p>';return;}
     html+='<table style="width:100%;border-collapse:collapse;font-size:0.9rem"><tbody>';
     selMids.forEach(mid=>{const m=par[mid]||{};const r=(risultati[gKey]||{})[mid]||{};const score=r.h!=null?r.h+' - '+r.a:'- -';html+='<tr style="border-bottom:1px solid #eee"><td style="padding:5px">'+(m.h||'?')+'</td><td style="text-align:center;padding:5px;font-weight:bold">'+score+'</td><td style="text-align:right;padding:5px">'+(m.a||'?')+'</td></tr>';});
     html+='</tbody></table>';
-  }
+  });
   html+='</div>';
   apriFinestraStampa(html);
 }
 
 function stampaCalendario() {
   const gironi = config.gironi || [];
-  const maxG = config.giornate || 3;
+  // Usa le giornate reali del calendario (sempre 3 per round-robin) invece di config.giornate
+  const primoGirone = Object.keys(calendario)[0];
+  const maxG = primoGirone ? Object.keys(calendario[primoGirone]).length : 3;
   let html = '<div style="font-family:serif;padding:20px;color:#000"><h1 style="text-align:center;margin-bottom:20px">Calendario Sfide - '+(config.nome||'Mondiale 2026')+'</h1>';
   for (let g=1; g<=maxG; g++) {
-    html+='<h2 style="margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px">Giornata '+g+'</h2>';
+    let giornataHtml = '';
     gironi.forEach((gName,gi)=>{
-      const gTag='G'+(gi+1);const gKey='g'+g;
+      const gTag='G'+(gi+1); const gKey='g'+g;
       const sfide=((calendario[gTag]||{})[gKey])||[];
-      if(!sfide.length)return;
-      html+='<div style="font-size:0.75rem;color:#888;margin:8px 0 4px;text-transform:uppercase">Girone '+(gName||gTag)+'</div>';
-      sfide.forEach(sfida=>{html+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0"><span>'+sfida.h+'</span><span style="font-weight:bold">vs</span><span>'+sfida.a+'</span></div>';});
+      if(!sfide.length) return;
+      giornataHtml+='<div style="font-size:0.75rem;color:#888;margin:8px 0 4px;text-transform:uppercase">Girone '+(gName||gTag)+'</div>';
+      sfide.forEach(sfida=>{giornataHtml+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0"><span>'+sfida.h+'</span><span style="font-weight:bold">vs</span><span>'+sfida.a+'</span></div>';});
     });
+    if (giornataHtml) html+='<h2 style="margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px">Giornata '+g+'</h2>'+giornataHtml;
   }
   html+='</div>';
   apriFinestraStampa(html);
@@ -1680,7 +1687,7 @@ function stampaCalendario() {
 function stampaTutto() {
   const scores = calcClassifica();
   const gironi = config.gironi || [];
-  const maxG = config.giornate || 3;
+  const giornateReali2 = Object.keys(partite).map(k=>parseInt(k.replace('g',''))).filter(Boolean).sort((a,b)=>a-b);
   let html = '<div style="font-family:serif;padding:20px;color:#000"><h1 style="text-align:center;margin-bottom:4px">'+(config.nome||'Mondiale 2026')+'</h1><p style="text-align:center;color:#666;margin-bottom:24px">Torneo Pronostici</p>';
   html+='<h2 style="border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:12px">Classifica</h2>';
   gironi.forEach((gName,gi)=>{
@@ -1690,8 +1697,19 @@ function stampaTutto() {
     sorted.forEach((p,i)=>{const s=scores[p]||{pt:0,re:0,gf:0,gs:0};html+='<tr style="border-bottom:1px solid #eee"><td style="padding:3px">'+(i+1)+'. '+p+'</td><td style="text-align:center;padding:3px;font-weight:bold">'+s.pt+'pt</td><td style="text-align:center;padding:3px">'+s.re+'RE</td><td style="text-align:center;padding:3px">'+(s.gf-s.gs>0?'+':'')+(s.gf-s.gs)+'</td></tr>';});
     html+='</tbody></table>';
   });
+  // Sezione partite selezionate
+  html+='<div style="page-break-before:always"></div><h2 style="border-bottom:2px solid #000;padding-bottom:6px;margin:20px 0 12px">Partite Selezionate</h2>';
+  giornateReali2.forEach(g=>{
+    const gKey='g'+g; const sel=selezione[gKey]||{}; const par=partite[gKey]||{};
+    const selMids=Object.keys(sel).filter(mid=>sel[mid]);
+    if(!selMids.length) return;
+    html+='<h3 style="margin:12px 0 4px">Giornata '+g+'</h3><table style="width:100%;border-collapse:collapse;font-size:0.85rem"><tbody>';
+    selMids.forEach(mid=>{const m=par[mid]||{};const r=(risultati[gKey]||{})[mid]||{};const score=r.h!=null?r.h+' - '+r.a:'- -';html+='<tr style="border-bottom:1px solid #eee"><td style="padding:3px">'+(m.h||'?')+'</td><td style="text-align:center;padding:3px;font-weight:bold">'+score+'</td><td style="text-align:right;padding:3px">'+(m.a||'?')+'</td></tr>';});
+    html+='</tbody></table>';
+  });
   html+='<div style="page-break-before:always"></div><h2 style="border-bottom:2px solid #000;padding-bottom:6px;margin:20px 0 12px">Calendario Sfide</h2>';
-  for(let g=1;g<=maxG;g++){
+  const _primoG=Object.keys(calendario)[0]; const _maxCal=_primoG?Object.keys(calendario[_primoG]).length:3;
+  for(let g=1;g<=_maxCal;g++){
     html+='<h3 style="margin:12px 0 4px">Giornata '+g+'</h3>';
     gironi.forEach((gName,gi)=>{
       const gTag='G'+(gi+1);const gKey='g'+g;const sfide=((calendario[gTag]||{})[gKey])||[];
