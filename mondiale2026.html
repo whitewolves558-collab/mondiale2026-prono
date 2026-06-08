@@ -458,7 +458,7 @@
   <button onclick="showSection('risultati')">📋 Risultati</button>
   <button onclick="showSection('eliminazione')">🥊 Knockout</button>
   <button onclick="showSection('calendario')">📅 Calendario</button>
-  <button onclick="showSection('altrui)'">👥 Altri Giocatori</button>
+  <button onclick="showSection('altrui')">👥 Altri Giocatori</button>
   <button onclick="showSection('profilo')">👤 Profilo</button>
   <button onclick="showSection('stampa')">🖨️ Stampa</button>
   <button id="nav-admin" style="display:none" onclick="showSection('admin')">⚙️ Admin</button>
@@ -920,7 +920,7 @@ function showSection(id) {
   if (id==='risultati') renderRisultati();
   if (id==='eliminazione') renderKnockout();
   if (id==='calendario') renderCalendario();
-  if (id==='altrui') renderAltrui();
+  if (id==='altrui') { loadPronosticiAltrui().then(renderAltrui); }
   if (id==='stampa') renderStampaMenu();
   if (id==='profilo') renderProfilo();
   if (id==='admin') { renderAdminSetup(); renderAdminGiocatori(); }
@@ -1576,10 +1576,20 @@ function handleBackspace(event, el, prevId) {
 
 let currentGiornataAltrui = 1;
 
+async function loadPronosticiAltrui() {
+  try {
+    const [pro, vis] = await Promise.all([fbGet('/pronostici'), fbGet('/visibilita')]);
+    pronostici = pro || {};
+    visibilita = vis || {};
+  } catch(e) { console.error('Errore caricamento pronostici', e); }
+}
+
+
+
 function changeGiornataAltrui(d) {
   const max = config.giornate || 3;
   currentGiornataAltrui = Math.max(1, Math.min(max, currentGiornataAltrui + d));
-  renderAltrui();
+  loadPronosticiAltrui().then(renderAltrui);
 }
 
 function renderAltrui() {
