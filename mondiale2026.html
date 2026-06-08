@@ -456,11 +456,10 @@
   <button class="active" onclick="showSection('classifica')">🏆 Classifica</button>
   <button onclick="showSection('pronostici')">⚽ I Miei Pronostici</button>
   <button onclick="showSection('risultati')">📋 Risultati</button>
-  <button onclick="showSection('eliminazione')">🥊 Knockout</button>
+  <button onclick="showSection('eliminazione')">🥊 Fase a Eliminazione</button>
   <button onclick="showSection('calendario')">📅 Calendario</button>
   <button onclick="showSection('altrui')">👥 Altri Giocatori</button>
   <button onclick="showSection('profilo')">👤 Profilo</button>
-  <button onclick="showSection('stampa')">🖨️ Stampa</button>
   <button id="nav-admin" style="display:none" onclick="showSection('admin')">⚙️ Admin</button>
 </div>
 
@@ -511,20 +510,6 @@
     <div id="calendario-content"><div class="loading-overlay"><div class="spinner"></div><div style="margin-top:10px">Caricamento...</div></div></div>
   </div>
 
-  <!-- ── STAMPA ── -->
-  <div id="sec-stampa" class="section">
-    <div class="card">
-      <div class="card-title">🖨️ Stampa / PDF</div>
-      <p style="font-size:0.85rem;color:var(--grigio);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;">Seleziona cosa stampare:</p>
-      <div class="print-options">
-        <button class="print-btn" onclick="stampaClassifica()">🏆 Classifica Gironi</button>
-        <button class="print-btn" onclick="stampaSelezione()">⚽ Partite Selezionate</button>
-        <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
-        <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
-      </div>
-      <div id="stampa-preview"></div>
-    </div>
-  </div>
 
   <!-- ── PRONOSTICI ALTRUI ── -->
   <div id="sec-altrui" class="section">
@@ -571,6 +556,7 @@
         <button class="inner-tab" onclick="adminTab('partite')">Partite</button>
         <button class="inner-tab" onclick="adminTab('risultati-admin')">Risultati</button>
         <button class="inner-tab" onclick="adminTab('visibilita-admin')">👁 Visibilità</button>
+        <button class="inner-tab" onclick="adminTab('stampa-admin')">🖨️ Stampa</button>
         <button class="inner-tab" onclick="adminTab('knockout-admin')">Knockout</button>
       </div>
       <div id="admin-setup" class="admin-section">
@@ -650,6 +636,16 @@
         <div id="ris-admin-msg" class="mt8"></div>
         <button class="btn btn-gold mt14" onclick="saveRisultatiAdmin()">💾 Salva e Calcola Punteggi</button>
       </div>
+      <div id="admin-stampa-admin" class="admin-section" style="display:none">
+        <p style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;">Seleziona cosa stampare:</p>
+        <div class="print-options">
+          <button class="print-btn" onclick="stampaClassifica()">🏆 Classifica Gironi</button>
+          <button class="print-btn" onclick="stampaSelezione()">⚽ Partite Selezionate</button>
+          <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
+          <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
+        </div>
+      </div>
+
       <div id="admin-knockout-admin" class="admin-section" style="display:none">
         <div id="ko-admin-content"></div>
         <div id="ko-admin-msg" class="mt8"></div>
@@ -911,7 +907,7 @@ function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
-  const idx = ['classifica','pronostici','risultati','eliminazione','calendario','altrui','profilo','stampa','admin'].indexOf(id);
+  const idx = ['classifica','pronostici','risultati','eliminazione','calendario','altrui','profilo','admin'].indexOf(id);
   const btns = document.querySelectorAll('#nav button');
   if (idx>=0 && btns[idx]) btns[idx].classList.add('active');
 
@@ -921,7 +917,6 @@ function showSection(id) {
   if (id==='eliminazione') renderKnockout();
   if (id==='calendario') renderCalendario();
   if (id==='altrui') { loadPronosticiAltrui().then(renderAltrui); }
-  if (id==='stampa') renderStampaMenu();
   if (id==='profilo') renderProfilo();
   if (id==='admin') { renderAdminSetup(); renderAdminGiocatori(); }
 }
@@ -1598,7 +1593,7 @@ function renderAltrui() {
   const el = document.getElementById('altrui-content');
 
   if (!isAdmin && !visibilita[gKey]) {
-    el.innerHTML = '<div style="text-align:center;padding:24px;font-family:Oswald;font-size:0.85rem;letter-spacing:0.1em;color:var(--grigio)">&#x23F3; I pronostici di questa giornata non sono ancora visibili.<br>L\'admin li renderà disponibili a fine giornata.</div>';
+    el.innerHTML = '<div style="text-align:center;padding:24px;font-family:Oswald;font-size:0.85rem;letter-spacing:0.1em;color:var(--grigio)">&#x23F3; I pronostici di questa giornata non sono ancora visibili.<br>L\'admin li renderà disponibili appena possibile.</div>';
     return;
   }
 
@@ -2092,6 +2087,7 @@ function adminTab(id) {
   if (id==='knockout-admin') renderKoAdmin();
   if (id==='calendario-admin') renderCalAdminPreview();
   if (id==='visibilita-admin') renderVisibilitaAdmin();
+  // stampa-admin non richiede inizializzazione
 }
 
 // ══════════════════════════════════════════════════
