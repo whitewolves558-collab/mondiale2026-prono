@@ -643,6 +643,14 @@
           <button class="print-btn" onclick="stampaSelezione()">⚽ Partite Selezionate</button>
           <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
           <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
+          <button class="print-btn" onclick="mostraSelettoreGiornata()">📊 Pronostici Giornata</button>
+        </div>
+        <div id="selettore-giornata" style="display:none;margin-top:12px">
+          <div class="input-group">
+            <label>Seleziona Giornata</label>
+            <select id="giornata-da-stampare" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Crimson Pro,serif;font-size:1rem;width:100%;outline:none"></select>
+          </div>
+          <button class="btn btn-gold mt8" onclick="stampaPronosticiGiornata()">🖨️ Stampa</button>
         </div>
       </div>
 
@@ -1809,6 +1817,139 @@ function buildCalendarioHTML() {
 // ══════════════════════════════════════════════════
 
 function renderStampaMenu() {}
+
+
+// ══════════════════════════════════════════════════
+// STAMPA PRONOSTICI GIORNATA
+// ══════════════════════════════════════════════════
+
+function mostraSelettoreGiornata() {
+  const sel = document.getElementById('selettore-giornata');
+  const select = document.getElementById('giornata-da-stampare');
+  // Popola con giornate che hanno partite
+  const giornateReali = Object.keys(partite)
+    .map(k => parseInt(k.replace('g','')))
+    .filter(Boolean)
+    .sort((a,b) => a-b);
+  select.innerHTML = giornateReali.map(g => '<option value="'+g+'">Giornata '+g+'</option>').join('');
+  sel.style.display = sel.style.display === 'none' ? 'block' : 'none';
+}
+
+function stampaPronosticiGiornata() {
+  const g = parseInt(document.getElementById('giornata-da-stampare').value);
+  const gKey = 'g' + g;
+  const sel = selezione[gKey] || {};
+  const par = partite[gKey] || {};
+  const ris = risultati[gKey] || {};
+  const selMids = Object.keys(sel).filter(mid => sel[mid]);
+  const midsToShow = selMids.length ? selMids : Object.keys(par);
+
+  if (!midsToShow.length) {
+    alert('Nessuna partita per questa giornata.');
+    return;
+  }
+
+  // Lista giocatori ordinati per girone
+  const gironi = config.gironi || [];
+  const allPlayers = [];
+  gironi.forEach((gName, gi) => {
+    const gTag = 'G' + (gi + 1);
+    Object.keys(players)
+      .filter(p => players[p].girone === gTag)
+      .sort()
+      .forEach(p => allPlayers.push(p));
+  });
+
+  // Intestazione tabella
+  let html = '<div style="font-family:serif;padding:16px;color:#000">';
+  html += '<h1 style="text-align:center;font-size:1.3rem;margin-bottom:4px">'+(config.nome||'Mondiale 2026')+'</h1>';
+  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:16px;font-weight:normal">Pronostici – Giornata '+g+'</h2>';
+
+  // Tabella: partite in verticale, giocatori in orizzontale
+  html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:0.75rem;width:100%">';
+
+  // Riga intestazione giocatori
+  html += '<thead><tr>';
+  html += '<th style="border:1px solid #ccc;padding:6px 8px;background:#f5f5f5;text-align:left;min-width:130px;font-size:0.72rem">Partita</th>';
+  html += '<th style="border:1px solid #ccc;padding:6px 4px;background:#f5f5f5;text-align:center;min-width:45px;font-size:0.7rem">Ris.</th>';
+  allPlayers.forEach(p => {
+    html += '<th style="border:1px solid #ccc;padding:4px 3px;background:#f0f5f0;text-align:center;min-width:42px;font-size:0.68rem;writing-mode:vertical-rl;transform:rotate(180deg);height:70px">'+p+'</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  // Riga per ogni partita
+  midsToShow.forEach((mid, idx) => {
+    const m = par[mid] || {};
+    const r = ris[mid] || {};
+    const done = r.h != null && r.a != null;
+    const rowBg = idx % 2 === 0 ? '#fff' : '#fafafa';
+
+    html += '<tr style="background:'+rowBg+'">';
+
+    // Partita
+    html += '<td style="border:1px solid #ccc;padding:5px 8px;font-size:0.75rem">'
+      + '<div style="font-weight:bold">'+( m.h||'?')+' – '+(m.a||'?')+'</div>'
+      + '<div style="color:#888;font-size:0.65rem">'+(m.gruppo||'')+(m.data?' · '+m.data:'')+'</div>'
+      + '</td>';
+
+    // Risultato ufficiale
+    html += '<td style="border:1px solid #ccc;padding:5px 4px;text-align:center;font-weight:bold;font-size:0.85rem;color:'+(done?'#1a7a42':'#bbb')+'">'
+      + (done ? r.h+'-'+r.a : '–')
+      + '</td>';
+
+    // Pronostico di ogni giocatore
+    allPlayers.forEach(p => {
+      const mio = ((pronostici[gKey] || {})[p] || {})[mid] || {};
+      const hasPro = mio.h != null && mio.a != null;
+      let bg = '#fff';
+      let pts = '';
+      if (done && hasPro) {
+        const rh=parseInt(r.h), ra=parseInt(r.a), mh=parseInt(mio.h), ma=parseInt(mio.a);
+        const signR=rh>ra?'1':(rh===ra?'X':'2');
+        const signM=mh>ma?'1':(mh===ma?'X':'2');
+        if (mh===rh && ma===ra) { bg='#d4edda'; pts='+3'; }
+        else if (signM===signR) { bg='#fff3cd'; pts='+1'; }
+        else { bg='#f8d7da'; pts='0'; }
+      }
+      html += '<td style="border:1px solid #ccc;padding:4px 3px;text-align:center;background:'+bg+';font-size:0.78rem">'
+        + (hasPro ? '<div style="font-weight:bold">'+mio.h+'-'+mio.a+'</div><div style="font-size:0.62rem;color:#555">'+pts+'</div>' : '<span style="color:#bbb">–</span>')
+        + '</td>';
+    });
+
+    html += '</tr>';
+  });
+
+  // Riga totale punti per giornata
+  html += '<tr style="background:#f0f0f0;font-weight:bold">';
+  html += '<td style="border:1px solid #ccc;padding:5px 8px;font-size:0.75rem" colspan="2">Punti Giornata</td>';
+  allPlayers.forEach(p => {
+    let tot = 0;
+    midsToShow.forEach(mid => {
+      const m2 = par[mid] || {};
+      const r2 = ris[mid] || {};
+      const mio2 = ((pronostici[gKey] || {})[p] || {})[mid] || {};
+      if (r2.h!=null && r2.a!=null && mio2.h!=null && mio2.a!=null) {
+        const rh=parseInt(r2.h), ra=parseInt(r2.a), mh=parseInt(mio2.h), ma=parseInt(mio2.a);
+        const sR=rh>ra?'1':(rh===ra?'X':'2'), sM=mh>ma?'1':(mh===ma?'X':'2');
+        if (mh===rh && ma===ra) tot+=3;
+        else if (sR===sM) tot+=1;
+      }
+    });
+    html += '<td style="border:1px solid #ccc;padding:5px 3px;text-align:center;font-size:0.85rem;color:#0a2e1a">'+tot+'</td>';
+  });
+  html += '</tr>';
+
+  html += '</tbody></table></div>';
+
+  // Legenda
+  html += '<div style="margin-top:12px;font-size:0.72rem;color:#555;display:flex;gap:16px;flex-wrap:wrap">';
+  html += '<span style="background:#d4edda;padding:2px 6px;border-radius:3px">Verde = Risultato esatto (+3)</span>';
+  html += '<span style="background:#fff3cd;padding:2px 6px;border-radius:3px">Giallo = Segno corretto (+1)</span>';
+  html += '<span style="background:#f8d7da;padding:2px 6px;border-radius:3px">Rosa = Errato (0)</span>';
+  html += '</div></div>';
+
+  apriFinestraStampa(html);
+}
 
 function stampaClassifica() {
   const scores = calcClassifica();
