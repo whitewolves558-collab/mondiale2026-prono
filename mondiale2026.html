@@ -1711,7 +1711,7 @@ function renderVisibilitaAdmin() {
     html += '<div class="player-chip" style="margin-bottom:8px">'
       + '<div><div class="pname">Giornata ' + g + '</div>'
       + '<div class="pgirone">' + (abilitata ? '✅ Visibile a tutti' : '🔒 Solo admin') + '</div></div>'
-      + '<button class="btn btn-sm ' + (abilitata ? 'btn-danger' : 'btn-gold') + '" onclick="toggleVisibilita("' + gKey + '",' + !abilitata + ')">'
+      + '<button class="btn btn-sm ' + (abilitata ? 'btn-danger' : 'btn-gold') + '" onclick="toggleVisibilita(\'' + gKey + '\',' + (abilitata ? 'false' : 'true') + ')">'  
       + (abilitata ? 'Nascondi' : 'Rendi visibile') + '</button>'
       + '</div>';
   }
@@ -1720,12 +1720,14 @@ function renderVisibilitaAdmin() {
 }
 
 async function toggleVisibilita(gKey, stato) {
+  // Converte stringa 'true'/'false' in booleano reale
+  const statoBoolean = stato === true || stato === 'true';
   try {
-    await fbPatch('/visibilita', { [gKey]: stato });
-    visibilita[gKey] = stato;
+    await fbPatch('/visibilita', { [gKey]: statoBoolean });
+    visibilita[gKey] = statoBoolean;
     renderVisibilitaAdmin();
-    const msg = stato ? '✅ Pronostici giornata visibili a tutti!' : '🔒 Pronostici nascosti';
-    document.getElementById('visibilita-msg').innerHTML = '<div class="msg ' + (stato ? 'msg-ok' : 'msg-info') + '">' + msg + '</div>';
+    const msg = statoBoolean ? '✅ Pronostici giornata visibili a tutti!' : '🔒 Pronostici nascosti';
+    document.getElementById('visibilita-msg').innerHTML = '<div class="msg ' + (statoBoolean ? 'msg-ok' : 'msg-info') + '">' + msg + '</div>';
     setTimeout(() => document.getElementById('visibilita-msg').innerHTML = '', 3000);
   } catch(e) {
     document.getElementById('visibilita-msg').innerHTML = '<div class="msg msg-err">❌ Errore</div>';
