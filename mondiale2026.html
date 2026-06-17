@@ -1855,19 +1855,47 @@ function buildCalendarioHTML() {
   const gironi = config.gironi || [];
   const primoGirone = Object.keys(calendario)[0];
   const maxG = primoGirone ? Object.keys(calendario[primoGirone]).length : 3;
-  const scores = calcClassifica();
   let html = '';
   for (let g=1; g<=maxG; g++) {
-    html += '<div class="cal-giornata"><div class="cal-round-title">Giornata '+g+'</div>';
+    const gKey = 'g'+g;
+    const ris = risultati[gKey] || {};
+    // Giornata completata = ha almeno un risultato ufficiale inserito
+    const giornataCompletata = Object.keys(ris).length > 0;
+
+    html += '<div class="cal-giornata"><div class="cal-round-title">Giornata '+g
+      + (giornataCompletata ? '' : ' <span style="font-size:0.65rem;color:var(--grigio);font-weight:400;letter-spacing:0.1em">– In attesa</span>')
+      + '</div>';
+
     gironi.forEach((gName, gi) => {
       const gTag = 'G'+(gi+1);
-      const gKey = 'g'+g;
       const sfide = ((calendario[gTag]||{})[gKey]) || [];
       if (!sfide.length) return;
       html += '<div class="cal-girone-label" style="margin-top:10px">Girone '+(gName||gTag)+'</div>';
       sfide.forEach(sfida => {
-        const ph = scores[sfida.h]||{pt:0}; const pa = scores[sfida.a]||{pt:0};
-        html += '<div class="cal-match"><div class="cal-player">'+sfida.h+'</div><div class="cal-score">'+ph.pt+' - '+pa.pt+'</div><div class="cal-player right">'+sfida.a+'</div></div>';
+        let scoreHtml;
+        if (giornataCompletata) {
+          // Calcola punti pronostico di ogni giocatore per questa giornata
+          const ph = calcPuntiGiornata(sfida.h, gKey);
+          const pa = calcPuntiGiornata(sfida.a, gKey);
+          const phPt = ph.pt, paPt = pa.pt;
+          // Colore in base al risultato della sfida
+          let colorH = 'var(--text)', colorA = 'var(--text)';
+          if (phPt > paPt) { colorH = '#4ade80'; colorA = '#f87171'; }
+          else if (paPt > phPt) { colorH = '#f87171'; colorA = '#4ade80'; }
+          else { colorH = 'var(--oro2)'; colorA = 'var(--oro2)'; }
+          scoreHtml = '<div class="cal-score">'
+            + '<span style="color:'+colorH+';font-weight:700">'+phPt+'</span>'
+            + '<span style="color:var(--grigio);margin:0 3px">–</span>'
+            + '<span style="color:'+colorA+';font-weight:700">'+paPt+'</span>'
+            + '</div>';
+        } else {
+          scoreHtml = '<div class="cal-score" style="color:var(--grigio);font-size:0.85rem">vs</div>';
+        }
+        html += '<div class="cal-match">'
+          + '<div class="cal-player">'+sfida.h+'</div>'
+          + scoreHtml
+          + '<div class="cal-player right">'+sfida.a+'</div>'
+          + '</div>';
       });
     });
     html += '</div>';
