@@ -932,33 +932,75 @@ function showSection(id) {
 // ══════════════════════════════════════════════════
 // CLASSIFICA
 // ══════════════════════════════════════════════════
-function calcClassifica() {
-  const scores = {};
-  Object.keys(players).forEach(p => { scores[p] = { pt:0, re:0, gf:0, gs:0, giocate:0, girone: players[p].girone }; });
+// Calcola i punti pronostico di un giocatore in una giornata
+function calcPuntiGiornata(p, gKey) {
+  const ris = risultati[gKey] || {};
+  const pros = pronostici[gKey] || {};
+  const selG = selezione[gKey] || {};
+  const selMids = Object.keys(selG).filter(k => selG[k]);
+  const midsToUse = selMids.length ? selMids : Object.keys(ris);
+  const mio = pros[p] || {};
+  let pt = 0, re = 0;
+  midsToUse.forEach(mid => {
+    const r = ris[mid]; const m = mio[mid];
+    if (!r || r.h==null || r.a==null) return;
+    if (!m || m.h==null || m.a==null) return;
+    const rh=parseInt(r.h), ra=parseInt(r.a);
+    const mh=parseInt(m.h), ma=parseInt(m.a);
+    const signR=rh>ra?'1':(rh===ra?'X':'2');
+    const signM=mh>ma?'1':(mh===ma?'X':'2');
+    if (mh===rh && ma===ra) { pt+=3; re++; }
+    else if (signM===signR) { pt+=1; }
+  });
+  return { pt, re };
+}
 
-  const maxG = config.giornate || 6;
+function calcClassifica() {
+  // scores[p] = { pt (classifica), gf (punti fatti), gs (punti subiti), re, v, n, s, girone }
+  const scores = {};
+  Object.keys(players).forEach(p => {
+    scores[p] = { pt:0, gf:0, gs:0, re:0, v:0, n:0, s:0, giocate:0, girone: players[p].girone };
+  });
+
+  const gironi = config.gironi || [];
+
+  // Per ogni giornata del calendario
+  const maxG = 3; // round-robin = sempre 3 giornate
   for (let g=1; g<=maxG; g++) {
-    const ris = risultati['g'+g];
-    if (!ris) continue;
-    const pros = pronostici['g'+g] || {};
-    Object.keys(players).forEach(p => {
-      const mio = pros[p] || {};
-      let ptG=0, reG=0, gfG=0, gsG=0, gioG=0;
-      Object.keys(ris).forEach(mid => {
-        const r = ris[mid]; const m = mio[mid];
-        if (!r || r.h==null || r.a==null) return;
-        gioG++;
-        const rh=parseInt(r.h), ra=parseInt(r.a);
-        const signR = rh>ra?'1':(rh===ra?'X':'2');
-        gfG += rh; gsG += ra;
-        if (m && m.h!=null && m.a!=null) {
-          const mh=parseInt(m.h), ma=parseInt(m.a);
-          const signM = mh>ma?'1':(mh===ma?'X':'2');
-          if (mh===rh && ma===ra) { ptG+=3; reG++; }
-          else if (signM===signR) { ptG+=1; }
+    const gKey = 'g' + g;
+    const ris = risultati[gKey];
+    if (!ris || !Object.keys(ris).length) continue; // giornata senza risultati
+
+    gironi.forEach((gName, gi) => {
+      const gTag = 'G' + (gi + 1);
+      const gKey2 = 'g' + g;
+      const sfide = ((calendario[gTag] || {})[gKey2]) || [];
+
+      sfide.forEach(sfida => {
+        const h = sfida.h; const a = sfida.a;
+        if (!scores[h] || !scores[a]) return;
+
+        const ph = calcPuntiGiornata(h, gKey);
+        const pa = calcPuntiGiornata(a, gKey);
+
+        // Accumula punti fatti/subiti (punti pronostico)
+        scores[h].gf += ph.pt; scores[h].gs += pa.pt;
+        scores[a].gf += pa.pt; scores[a].gs += ph.pt;
+        scores[h].re += ph.re; scores[a].re += pa.re;
+        scores[h].giocate++; scores[a].giocate++;
+
+        // Determina vittoria/pareggio/sconfitta
+        if (ph.pt > pa.pt) {
+          scores[h].pt += 3; scores[h].v++;
+          scores[a].s++;
+        } else if (ph.pt === pa.pt) {
+          scores[h].pt += 1; scores[h].n++;
+          scores[a].pt += 1; scores[a].n++;
+        } else {
+          scores[a].pt += 3; scores[a].v++;
+          scores[h].s++;
         }
       });
-      if (scores[p]) { scores[p].pt+=ptG; scores[p].re+=reG; scores[p].gf+=gfG; scores[p].gs+=gsG; scores[p].giocate+=gioG; }
     });
   }
   return scores;
@@ -976,21 +1018,40 @@ function renderClassifica() {
     const gTag = 'G'+(gi+1);
     const playersInG = Object.keys(players).filter(p => players[p].girone===gTag);
     const sorted = playersInG.sort((a,b) => {
-      const sa=scores[a]||{pt:0,re:0,gf:0,gs:0}; const sb=scores[b]||{pt:0,re:0,gf:0,gs:0};
+      const sa=scores[a]||{pt:0,re:0,gf:0,gs:0,v:0,n:0,s:0};
+      const sb=scores[b]||{pt:0,re:0,gf:0,gs:0,v:0,n:0,s:0};
+      // 1° punti classifica, 2° differenza punti pronostico, 3° punti fatti, 4° RE
       if (sb.pt!==sa.pt) return sb.pt-sa.pt;
-      if (sb.re!==sa.re) return sb.re-sa.re;
       const da=(sa.gf-sa.gs), db=(sb.gf-sb.gs); if (db!==da) return db-da;
-      return sb.gf-sa.gf;
+      if (sb.gf!==sa.gf) return sb.gf-sa.gf;
+      return sb.re-sa.re;
     });
-    html += `<div class="card"><div class="girone-header">🏴 Girone ${gName || gTag}</div>
-    <table class="stand-table">
-    <thead><tr><th>#</th><th>Giocatore</th><th>Pt</th><th>RE</th><th>±</th></tr></thead><tbody>`;
+    html += '<div class="card"><div class="girone-header">🏴 Girone '+(gName||gTag)+'</div>'
+      + '<table class="stand-table">'
+      + '<thead><tr><th>#</th><th>Giocatore</th><th>Pt</th><th>G</th><th>V</th><th>N</th><th>S</th><th>PF</th><th>PS</th><th>RE</th></tr></thead><tbody>';
     sorted.forEach((p,i) => {
-      const s=scores[p]||{pt:0,re:0,gf:0,gs:0};
-      const marker = i===0?'<span class="qual-marker"></span>':(i===1?'<span class="qual-marker second"></span>':'');
-      html += `<tr><td class="pos">${i+1}</td><td class="nome">${marker}${p}</td><td class="pts">${s.pt}</td><td class="re">${s.re}</td><td>${s.gf-s.gs>0?'+':''}${s.gf-s.gs}</td></tr>`;
+      const s=scores[p]||{pt:0,re:0,gf:0,gs:0,v:0,n:0,s:0,giocate:0};
+      const marker = i===0?'<span class="qual-marker"></span>':(i===1?'<span class="qual-marker second"></span>':(i===2?'<span class="qual-marker" style="background:var(--grigio)"></span>':''));
+      html += '<tr>'
+        + '<td class="pos">'+(i+1)+'</td>'
+        + '<td class="nome">'+marker+p+'</td>'
+        + '<td class="pts">'+s.pt+'</td>'
+        + '<td>'+s.giocate+'</td>'
+        + '<td style="color:#4ade80">'+s.v+'</td>'
+        + '<td style="color:var(--oro2)">'+s.n+'</td>'
+        + '<td style="color:#f87171">'+s.s+'</td>'
+        + '<td style="color:var(--text2)">'+s.gf+'</td>'
+        + '<td style="color:var(--grigio)">'+s.gs+'</td>'
+        + '<td class="re">'+s.re+'</td>'
+        + '</tr>';
     });
-    html += '</tbody></table><div style="margin-top:8px; font-size:0.68rem; color:var(--grigio); font-family:Oswald; letter-spacing:0.1em;">🟡 1° qualificato &nbsp; 🟢 2° qualificato</div></div>';
+    html += '</tbody></table>'
+      + '<div style="margin-top:8px;font-size:0.65rem;color:var(--grigio);font-family:Oswald;letter-spacing:0.08em">'
+      + 'Pt=Punti classifica &nbsp; G=Giocate &nbsp; V/N/S &nbsp; PF=Punti Fatti &nbsp; PS=Punti Subiti &nbsp; RE=Risultati Esatti'
+      + '</div>'
+      + '<div style="margin-top:4px;font-size:0.65rem;color:var(--grigio);font-family:Oswald;letter-spacing:0.08em">'
+      + '🟡 1° qualificato &nbsp; 🟢 2° qualificato &nbsp; ⚫ 3° qualificato'
+      + '</div></div>';
   });
   document.getElementById('classifica-content').innerHTML = html || '<div class="loading-overlay">Nessun dato disponibile</div>';
 }
