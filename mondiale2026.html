@@ -660,6 +660,12 @@
         </div>
         <button class="btn btn-gold mt14" onclick="aggiornaRisultatiAutomatico(true)">🔄 Controlla ora</button>
         <button class="btn btn-outline btn-sm mt8" id="fifa-toggle-btn" style="margin-left:8px" onclick="toggleAggiornamentoAutomatico()">⏸ Metti in pausa</button>
+        <hr class="divider">
+        <div style="font-size:0.78rem;color:var(--text2);margin-bottom:10px;font-family:Oswald;letter-spacing:0.06em;line-height:1.5">
+          Se vedi risultati 0-0 sospetti su partite non ancora giocate (causati da un bug ora corretto), usa questo pulsante per rimuoverli.
+        </div>
+        <button class="btn btn-sm" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiSospetti()">🗑️ Pulisci risultati 0-0 sospetti</button>
+        <div id="pulizia-msg" class="mt8"></div>
       </div>
 
       <div id="admin-stampa-admin" class="admin-section" style="display:none">
@@ -1020,14 +1026,21 @@ async function aggiornaRisultatiAutomatico(manuale) {
 
       if (match) {
         partiteTrovateApi++;
-        // Questa API usa 'finished' (stringa "TRUE"/"FALSE") e 'time_elapsed' invece di 'status'
+        // Questa API usa 'finished' (stringa "TRUE"/"FALSE") e 'time_elapsed' per lo stato
         const finished = (match.finished + '').toUpperCase() === 'TRUE';
-        const timeElapsed = (match.time_elapsed || '').toLowerCase();
-        const isLive = timeElapsed && timeElapsed !== 'not started' && timeElapsed !== '';
+        const timeElapsed = (match.time_elapsed || '').toString().toLowerCase().trim();
+        // Una partita è considerata iniziata SOLO se time_elapsed indica esplicitamente
+        // uno stato di gioco reale (minuti giocati, 'live', 'finished', tempi supplementari, ecc.)
+        // Esclude esplicitamente: vuoto, 'not started', '0', 'scheduled', 'upcoming'
+        const statiNonIniziati = ['', 'not started', '0', 'scheduled', 'upcoming', 'tbd', 'null'];
+        const isLive = timeElapsed && !statiNonIniziati.includes(timeElapsed) && !finished;
         const homeScore = match.home_score ?? match.homeScore ?? match.homeGoals;
         const awayScore = match.away_score ?? match.awayScore ?? match.awayGoals;
-        // Aggiorna se la partita è finita o in corso e ci sono punteggi validi
-        if (homeScore != null && awayScore != null && homeScore !== 'null' && awayScore !== 'null' && (finished || isLive)) {
+        const scoresValid = homeScore != null && awayScore != null
+          && homeScore !== 'null' && awayScore !== 'null' && homeScore !== '' && awayScore !== '';
+        // Aggiorna SOLO se la partita è esplicitamente finita o esplicitamente in corso
+        // (mai per partite non ancora iniziate, anche se hanno punteggio 0-0 di default nell'API)
+        if (scoresValid && (finished || isLive)) {
           updates[mid] = { h: parseInt(homeScore), a: parseInt(awayScore) };
         }
       }
@@ -1129,6 +1142,49 @@ function toggleAggiornamentoAutomatico() {
     avviaAggiornamentoAutomatico();
   }
   renderFifaLiveAdmin();
+}
+
+async function pulisciRisultatiSospetti() {
+  // Trova tutte le partite con risultato 0-0 nelle giornate caricate
+  const sospette = [];
+  Object.keys(partite).forEach(gKey => {
+    const matchesG = partite[gKey] || {};
+    const risG = risultati[gKey] || {};
+    Object.keys(matchesG).forEach(mid => {
+      const r = risG[mid];
+      if (r && r.h === 0 && r.a === 0) {
+        sospette.push({ gKey, mid, h: matchesG[mid].h, a: matchesG[mid].a, data: matchesG[mid].data });
+      }
+    });
+  });
+
+  if (!sospette.length) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Nessun risultato 0-0 sospetto trovato.</div>';
+    return;
+  }
+
+  let elenco = sospette.map(s => '• ' + s.h + ' vs ' + s.a + ' (' + (s.data||s.gKey) + ')').join('\n');
+  const conferma = confirm(
+    'Trovate ' + sospette.length + ' partite con risultato 0-0:\n\n' + elenco +
+    '\n\nSe sono risultati REALI (partite davvero finite 0-0), premi ANNULLA.\n' +
+    'Se sono FALSI risultati da rimuovere, premi OK.'
+  );
+
+  if (!conferma) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-info">Operazione annullata. Nessuna modifica.</div>';
+    return;
+  }
+
+  try {
+    for (const s of sospette) {
+      await fbDelete('/risultati/' + s.gKey + '/' + s.mid);
+      if (risultati[s.gKey]) delete risultati[s.gKey][s.mid];
+    }
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Rimossi ' + sospette.length + ' risultati 0-0.</div>';
+    renderClassifica();
+  } catch(e) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-err">❌ Errore durante la pulizia</div>';
+  }
 }
 
 function avviaAggiornamentoAutomatico() {
@@ -1265,8 +1321,11 @@ function calcClassifica() {
   const maxG = 3; // round-robin = sempre 3 giornate
   for (let g=1; g<=maxG; g++) {
     const gKey = 'g' + g;
-    // Conta in classifica solo le giornate COMPLETATE (tutte le partite selezionate hanno risultato)
-    if (!giornataCompletata(gKey)) continue;
+    // Conta in classifica le giornate COMPLETATE o IN CORSO (almeno un risultato presente).
+    // Le giornate non ancora iniziate (zero risultati) vengono escluse.
+    const completata = giornataCompletata(gKey);
+    const inCorso = giornataInCorso(gKey);
+    if (!completata && !inCorso) continue;
 
     gironi.forEach((gName, gi) => {
       const gTag = 'G' + (gi + 1);
@@ -1317,7 +1376,7 @@ function renderClassifica() {
   }
   let html = '';
   if (giornateInCorsoList.length) {
-    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">🟠 Giornata ' + giornateInCorsoList.join(', ') + ' in corso: la classifica si aggiornerà al termine di tutte le partite della giornata.</div>';
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">🟠 Giornata ' + giornateInCorsoList.join(', ') + ' in corso: la classifica include i punteggi parziali e si aggiorna automaticamente.</div>';
   }
   gironi.forEach((gName, gi) => {
     const gTag = 'G'+(gi+1);
