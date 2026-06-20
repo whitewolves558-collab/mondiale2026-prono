@@ -919,6 +919,7 @@ async function startApp() {
 // ══════════════════════════════════════════════════
 
 const WC_API_URL = 'https://worldcup26.ir/get/games';
+const WC_API_PROXY = 'https://corsproxy.io/?url=' + encodeURIComponent(WC_API_URL);
 let wcAutoUpdateTimer = null;
 let fifaUpdateCount = 0;
 let fifaLastCheck = null;
@@ -926,55 +927,71 @@ const WC_UPDATE_INTERVAL = 60000; // 60 secondi
 
 // Mappa nomi italiani/app -> nomi inglesi usati dall'API (estendibile)
 const WC_NAME_MAP = {
-  'Inghilterra':'England', 'Stati Uniti':'USA', 'Stati Uniti d\'America':'USA',
-  'Costa d\'Avorio':'Ivory Coast', "Costa d'Avorio":'Ivory Coast',
-  'Corea del Sud':'South Korea', 'Corea del sud':'South Korea',
-  'Paesi Bassi':'Netherlands', 'Olanda':'Netherlands',
-  'Germania':'Germany', 'Francia':'France', 'Spagna':'Spain', 'Italia':'Italy',
-  'Portogallo':'Portugal', 'Belgio':'Belgium', 'Croazia':'Croatia',
-  'Argentina':'Argentina', 'Brasile':'Brazil', 'Uruguay':'Uruguay',
-  'Marocco':'Morocco', 'Senegal':'Senegal', 'Ghana':'Ghana', 'Nigeria':'Nigeria',
-  'Egitto':'Egypt', 'Tunisia':'Tunisia', 'Algeria':'Algeria', 'Camerun':'Cameroon',
-  'Giappone':'Japan', 'Iran':'Iran', 'Arabia Saudita':'Saudi Arabia',
-  'Qatar':'Qatar', 'Australia':'Australia', 'Canada':'Canada', 'Messico':'Mexico',
-  'Panama':'Panama', 'Ecuador':'Ecuador', 'Colombia':'Colombia', 'Cile':'Chile',
-  'Perù':'Peru', 'Paraguay':'Paraguay', 'Bolivia':'Bolivia', 'Venezuela':'Venezuela',
-  'Polonia':'Poland', 'Svizzera':'Switzerland', 'Austria':'Austria', 'Serbia':'Serbia',
-  'Danimarca':'Denmark', 'Svezia':'Sweden', 'Norvegia':'Norway', 'Scozia':'Scotland',
-  'Galles':'Wales', 'Irlanda':'Ireland', 'Ucraina':'Ukraine', 'Turchia':'Turkey',
-  'Grecia':'Greece', 'Romania':'Romania', 'Slovacchia':'Slovakia', 'Slovenia':'Slovenia',
-  'Repubblica Ceca':'Czech Republic', 'Ungheria':'Hungary', 'Finlandia':'Finland',
-  'Islanda':'Iceland', 'Sudafrica':'South Africa', 'Capo Verde':'Cape Verde',
-  'Giordania':'Jordan', 'Uzbekistan':'Uzbekistan', 'Curacao':'Curaçao', 'Curaçao':'Curaçao',
-  'Nuova Zelanda':'New Zealand', 'Haiti':'Haiti'
+  'Algeria':'Algeria', 'Arabia Saudita':'Saudi Arabia', 'Argentina':'Argentina',
+  'Australia':'Australia', 'Austria':'Austria', 'Belgio':'Belgium',
+  'Bosnia-Erzegovina':'Bosnia and Herzegovina', 'Brasile':'Brazil', 'Canada':'Canada',
+  'Capo Verde':'Cape Verde', 'Colombia':'Colombia', 'Corea del Sud':'South Korea',
+  'Costa d\'Avorio':'Ivory Coast', 'Croazia':'Croatia', 'Curacao':'Curacao',
+  'Ecuador':'Ecuador', 'Egitto':'Egypt', 'Francia':'France',
+  'Germania':'Germany', 'Ghana':'Ghana', 'Giappone':'Japan', 'Giordania':'Jordan',
+  'Haiti':'Haiti', 'Inghilterra':'England', 'Iran':'Iran', 'Iraq':'Iraq',
+  'Marocco':'Morocco', 'Messico':'Mexico', 'Norvegia':'Norway',
+  'Nuova Zelanda':'New Zealand', 'Olanda':'Netherlands', 'Paesi Bassi':'Netherlands',
+  'Panama':'Panama', 'Paraguay':'Paraguay', 'Portogallo':'Portugal', 'Qatar':'Qatar',
+  'R.D. del Congo':'DR Congo', 'Rep. Ceca':'Czech Republic', 'Repubblica Ceca':'Czech Republic',
+  'Scozia':'Scotland', 'Senegal':'Senegal', 'Spagna':'Spain', 'Stati Uniti':'USA',
+  'Stati Uniti d\'America':'USA', 'Sudafrica':'South Africa', 'Svezia':'Sweden',
+  'Svizzera':'Switzerland', 'Tunisia':'Tunisia', 'Turchia':'Turkey', 'Uruguay':'Uruguay',
+  'Uzbekistan':'Uzbekistan', 'Italia':'Italy'
 };
 
 function normalizzaNomeSquadra(nome) {
   if (!nome) return '';
   const mapped = WC_NAME_MAP[nome] || nome;
-  return mapped.trim().toLowerCase();
+  return mapped.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // rimuove accenti (ç, é, ñ, ecc.)
+    .replace(/[^a-z0-9]/g, ''); // rimuove spazi, trattini, apostrofi per match più robusto
 }
 
+let fifaLastError = null;
+let fifaLastRawSample = null;
+
 async function fetchRisultatiFIFA() {
-  try {
-    const resp = await fetch(WC_API_URL);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    return data.games || data.matches || data.data || data;
-  } catch(e) {
-    console.error('Errore fetch FIFA API:', e);
-    return null;
+  // Tenta prima la chiamata diretta, poi con proxy CORS se fallisce
+  const tentativi = [WC_API_URL, WC_API_PROXY];
+  for (const url of tentativi) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const games = data.games || data.matches || data.data || data;
+      fifaLastError = null;
+      if (Array.isArray(games) && games.length) fifaLastRawSample = games[0];
+      return games;
+    } catch(e) {
+      console.warn('Tentativo fallito (' + url.substring(0,40) + '...):', e.message || e);
+      fifaLastError = e.message || String(e);
+      continue;
+    }
   }
+  console.error('Tutti i tentativi di fetch FIFA API falliti');
+  return null;
 }
 
 async function aggiornaRisultatiAutomatico(manuale) {
   const fifaGames = await fetchRisultatiFIFA();
   if (!fifaGames || !Array.isArray(fifaGames)) {
-    if (manuale) alert('⚠️ Impossibile recuperare i risultati FIFA in questo momento. Riprova più tardi.');
+    fifaLastCheck = new Date();
+    updateFifaLiveStatusUI();
+    if (manuale) {
+      mostraDiagnosticaFifa('❌ Impossibile recuperare i risultati FIFA.<br><span style="font-size:0.8rem;color:#888">Errore: ' + (fifaLastError || 'sconosciuto') + '</span>', 0, 0, 0, null);
+    }
     return { aggiornate: 0, errore: true };
   }
 
   let aggiornate = 0;
+  let partiteControllate = 0;
+  let partiteTrovateApi = 0;
   const giornateReali = Object.keys(partite);
 
   for (const gKey of giornateReali) {
@@ -986,22 +1003,31 @@ async function aggiornaRisultatiAutomatico(manuale) {
       const m = matchesG[mid];
       // Salta se già abbiamo un risultato completo
       if (risG[mid] && risG[mid].h != null && risG[mid].a != null) return;
+      partiteControllate++;
 
       const homeNorm = normalizzaNomeSquadra(m.h);
       const awayNorm = normalizzaNomeSquadra(m.a);
 
       const match = fifaGames.find(fg => {
-        const fgHome = normalizzaNomeSquadra(fg.homeTeam?.name || fg.home_team || fg.home);
-        const fgAway = normalizzaNomeSquadra(fg.awayTeam?.name || fg.away_team || fg.away);
+        const fgHome = normalizzaNomeSquadra(
+          fg.home_team_name_en || fg.homeTeam?.name || fg.home_team || fg.home
+        );
+        const fgAway = normalizzaNomeSquadra(
+          fg.away_team_name_en || fg.awayTeam?.name || fg.away_team || fg.away
+        );
         return (fgHome === homeNorm && fgAway === awayNorm);
       });
 
       if (match) {
-        const status = (match.status || '').toLowerCase();
-        const homeScore = match.homeScore ?? match.home_score ?? match.homeGoals;
-        const awayScore = match.awayScore ?? match.away_score ?? match.awayGoals;
-        // Aggiorna solo se ci sono punteggi numerici validi (live o completed)
-        if (homeScore != null && awayScore != null && (status==='live' || status==='completed' || status==='finished' || status==='in_play')) {
+        partiteTrovateApi++;
+        // Questa API usa 'finished' (stringa "TRUE"/"FALSE") e 'time_elapsed' invece di 'status'
+        const finished = (match.finished + '').toUpperCase() === 'TRUE';
+        const timeElapsed = (match.time_elapsed || '').toLowerCase();
+        const isLive = timeElapsed && timeElapsed !== 'not started' && timeElapsed !== '';
+        const homeScore = match.home_score ?? match.homeScore ?? match.homeGoals;
+        const awayScore = match.away_score ?? match.awayScore ?? match.awayGoals;
+        // Aggiorna se la partita è finita o in corso e ci sono punteggi validi
+        if (homeScore != null && awayScore != null && homeScore !== 'null' && awayScore !== 'null' && (finished || isLive)) {
           updates[mid] = { h: parseInt(homeScore), a: parseInt(awayScore) };
         }
       }
@@ -1035,10 +1061,43 @@ async function aggiornaRisultatiAutomatico(manuale) {
   updateFifaLiveStatusUI();
 
   if (manuale) {
-    alert(aggiornate > 0 ? '✅ Aggiornati ' + aggiornate + ' risultati!' : 'ℹ️ Nessun nuovo risultato disponibile al momento.');
+    let msg = aggiornate > 0
+      ? ('✅ Aggiornati ' + aggiornate + ' risultati!')
+      : 'ℹ️ Nessun nuovo risultato disponibile al momento.';
+    mostraDiagnosticaFifa(msg, partiteControllate, partiteTrovateApi, fifaGames.length, fifaLastRawSample);
   }
 
   return { aggiornate, errore: false };
+}
+
+function mostraDiagnosticaFifa(msgPrincipale, controllate, trovate, totaleApi, sample) {
+  const existing = document.getElementById('fifa-diag-overlay');
+  if (existing) existing.remove();
+
+  let sampleHtml = '';
+  if (sample) {
+    sampleHtml = '<div style="margin-top:12px;font-size:0.7rem;color:#888;text-align:left;background:#f5f5f5;padding:10px;border-radius:6px;max-height:150px;overflow:auto;white-space:pre-wrap">' + JSON.stringify(sample, null, 2).substring(0, 600) + '</div>';
+  }
+
+  const warning = (controllate > 0 && trovate === 0)
+    ? '<div style="margin-top:10px;color:#c0392b;font-size:0.82rem">⚠️ Nessuna corrispondenza nomi squadre trovata. Vedi esempio dati API sotto.</div>'
+    : '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'fifa-diag-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:340px;width:100%;color:#000;font-family:sans-serif">'
+    + '<div style="font-size:1rem;font-weight:600;margin-bottom:12px">' + msgPrincipale + '</div>'
+    + '<div style="font-size:0.85rem;line-height:1.8;color:#333">'
+    + 'Partite controllate: <b>' + controllate + '</b><br>'
+    + 'Trovate nell\'API: <b>' + trovate + '</b><br>'
+    + 'Totale partite ricevute: <b>' + totaleApi + '</b>'
+    + '</div>'
+    + warning
+    + sampleHtml
+    + '<button onclick="document.getElementById(\'fifa-diag-overlay\').remove()" style="margin-top:16px;width:100%;padding:10px;background:#0a2e1a;color:#c9a84c;border:none;border-radius:6px;font-size:0.9rem">Chiudi</button>'
+    + '</div>';
+  document.body.appendChild(overlay);
 }
 
 function updateFifaLiveStatusUI() {
@@ -1117,6 +1176,11 @@ async function loadAll() {
 // NAV
 // ══════════════════════════════════════════════════
 function showSection(id) {
+  // BLOCCO SICUREZZA: la sezione admin è accessibile SOLO se isAdmin === true
+  if (id === 'admin' && !isAdmin) {
+    console.warn('Accesso negato alla sezione admin');
+    id = 'classifica';
+  }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
@@ -1131,13 +1195,41 @@ function showSection(id) {
   if (id==='calendario') renderCalendario();
   if (id==='altrui') { loadPronosticiAltrui().then(renderAltrui); }
   if (id==='profilo') renderProfilo();
-  if (id==='admin') { renderAdminSetup(); renderAdminGiocatori(); }
+  if (id==='admin' && isAdmin) { renderAdminSetup(); renderAdminGiocatori(); }
 }
 
 // ══════════════════════════════════════════════════
 // CLASSIFICA
 // ══════════════════════════════════════════════════
 // Calcola i punti pronostico di un giocatore in una giornata
+// Verifica se TUTTE le partite selezionate di una giornata hanno un risultato completo
+function giornataCompletata(gKey) {
+  const ris = risultati[gKey] || {};
+  const par = partite[gKey] || {};
+  const selG = selezione[gKey] || {};
+  const selMids = Object.keys(selG).filter(k => selG[k]);
+  const midsToUse = selMids.length ? selMids : Object.keys(par);
+  if (!midsToUse.length) return false;
+  return midsToUse.every(mid => {
+    const r = ris[mid];
+    return r && r.h != null && r.a != null;
+  });
+}
+
+// Verifica se una giornata ha ALMENO UN risultato (in corso, parziale)
+function giornataInCorso(gKey) {
+  const ris = risultati[gKey] || {};
+  const par = partite[gKey] || {};
+  const selG = selezione[gKey] || {};
+  const selMids = Object.keys(selG).filter(k => selG[k]);
+  const midsToUse = selMids.length ? selMids : Object.keys(par);
+  const conRisultato = midsToUse.filter(mid => {
+    const r = ris[mid];
+    return r && r.h != null && r.a != null;
+  });
+  return conRisultato.length > 0 && conRisultato.length < midsToUse.length;
+}
+
 function calcPuntiGiornata(p, gKey) {
   const ris = risultati[gKey] || {};
   const pros = pronostici[gKey] || {};
@@ -1173,8 +1265,8 @@ function calcClassifica() {
   const maxG = 3; // round-robin = sempre 3 giornate
   for (let g=1; g<=maxG; g++) {
     const gKey = 'g' + g;
-    const ris = risultati[gKey];
-    if (!ris || !Object.keys(ris).length) continue; // giornata senza risultati
+    // Conta in classifica solo le giornate COMPLETATE (tutte le partite selezionate hanno risultato)
+    if (!giornataCompletata(gKey)) continue;
 
     gironi.forEach((gName, gi) => {
       const gTag = 'G' + (gi + 1);
@@ -1218,7 +1310,15 @@ function renderClassifica() {
     document.getElementById('classifica-content').innerHTML = '<div class="card"><div class="loading-overlay" style="color:var(--oro)">Nessun girone configurato. Contatta l\'admin.</div></div>';
     return;
   }
+  // Controlla se ci sono giornate in corso (per avviso)
+  let giornateInCorsoList = [];
+  for (let g=1; g<=3; g++) {
+    if (giornataInCorso('g'+g)) giornateInCorsoList.push(g);
+  }
   let html = '';
+  if (giornateInCorsoList.length) {
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">🟠 Giornata ' + giornateInCorsoList.join(', ') + ' in corso: la classifica si aggiornerà al termine di tutte le partite della giornata.</div>';
+  }
   gironi.forEach((gName, gi) => {
     const gTag = 'G'+(gi+1);
     const playersInG = Object.keys(players).filter(p => players[p].girone===gTag);
@@ -1304,7 +1404,8 @@ function renderPronostici() {
       if (mh===rh&&ma===ra) pronoBadge='<span class="prono-result prono-exact">+3 Risultato esatto</span>';
       else { const sr=rh>ra?'1':(rh===ra?'X':'2'); const sm=mh>ma?'1':(mh===ma?'X':'2'); if (sr===sm) pronoBadge='<span class="prono-result prono-sign">+1 Segno corretto</span>'; else pronoBadge='<span class="prono-result prono-wrong">0 Errato</span>'; }
     }
-    const locked = hasRis;
+    // Blocca il pronostico solo se QUESTA specifica partita ha già un risultato
+    const locked = r && r.h!=null && r.a!=null;
     html += `<div class="match-card">
       <div class="match-info">${m.gruppo||''} · ${m.data||''}</div>
       <div class="match-teams">
@@ -1320,7 +1421,11 @@ function renderPronostici() {
       ${pronoBadge?'<div style="margin-top:8px">'+pronoBadge+'</div>':''}
     </div>`;
   });
-  if (!hasRis) html += `<button class="btn btn-gold btn-block mt8" onclick="saveAllPronostici('${gKey}')">💾 Salva Pronostici</button>`;
+  const tutteBloccate = selMids.every(mid => {
+    const r = ris[mid];
+    return r && r.h!=null && r.a!=null;
+  });
+  if (!tutteBloccate) html += `<button class="btn btn-gold btn-block mt8" onclick="saveAllPronostici('${gKey}')">💾 Salva Pronostici</button>`;
   document.getElementById('prono-content').innerHTML = html;
 }
 
@@ -2063,13 +2168,16 @@ function buildCalendarioHTML() {
   let html = '';
   for (let g=1; g<=maxG; g++) {
     const gKey = 'g'+g;
-    const ris = risultati[gKey] || {};
-    // Giornata completata = ha almeno un risultato ufficiale inserito
-    const giornataCompletata = Object.keys(ris).length > 0;
+    const completata = giornataCompletata(gKey);
+    const inCorso = giornataInCorso(gKey);
+    // Mostra i punteggi (anche parziali) se la giornata è completata O in corso
+    const mostraPunteggi = completata || inCorso;
 
-    html += '<div class="cal-giornata"><div class="cal-round-title">Giornata '+g
-      + (giornataCompletata ? '' : ' <span style="font-size:0.65rem;color:var(--grigio);font-weight:400;letter-spacing:0.1em">– In attesa</span>')
-      + '</div>';
+    let statusLabel = '';
+    if (inCorso) statusLabel = ' <span style="font-size:0.65rem;color:#f5a623;font-weight:400;letter-spacing:0.1em">– Punteggi Parziali</span>';
+    else if (!completata) statusLabel = ' <span style="font-size:0.65rem;color:var(--grigio);font-weight:400;letter-spacing:0.1em">– In attesa</span>';
+
+    html += '<div class="cal-giornata"><div class="cal-round-title">Giornata '+g+statusLabel+'</div>';
 
     gironi.forEach((gName, gi) => {
       const gTag = 'G'+(gi+1);
@@ -2078,16 +2186,20 @@ function buildCalendarioHTML() {
       html += '<div class="cal-girone-label" style="margin-top:10px">Girone '+(gName||gTag)+'</div>';
       sfide.forEach(sfida => {
         let scoreHtml;
-        if (giornataCompletata) {
-          // Calcola punti pronostico di ogni giocatore per questa giornata
+        if (mostraPunteggi) {
+          // Calcola punti pronostico di ogni giocatore per questa giornata (anche parziali)
           const ph = calcPuntiGiornata(sfida.h, gKey);
           const pa = calcPuntiGiornata(sfida.a, gKey);
           const phPt = ph.pt, paPt = pa.pt;
-          // Colore in base al risultato della sfida
+          // Colore in base al risultato della sfida (solo se giornata completata, altrimenti neutro)
           let colorH = 'var(--text)', colorA = 'var(--text)';
-          if (phPt > paPt) { colorH = '#4ade80'; colorA = '#f87171'; }
-          else if (paPt > phPt) { colorH = '#f87171'; colorA = '#4ade80'; }
-          else { colorH = 'var(--oro2)'; colorA = 'var(--oro2)'; }
+          if (completata) {
+            if (phPt > paPt) { colorH = '#4ade80'; colorA = '#f87171'; }
+            else if (paPt > phPt) { colorH = '#f87171'; colorA = '#4ade80'; }
+            else { colorH = 'var(--oro2)'; colorA = 'var(--oro2)'; }
+          } else {
+            colorH = '#f5a623'; colorA = '#f5a623'; // arancio per parziale
+          }
           scoreHtml = '<div class="cal-score">'
             + '<span style="color:'+colorH+';font-weight:700">'+phPt+'</span>'
             + '<span style="color:var(--grigio);margin:0 3px">–</span>'
