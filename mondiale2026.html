@@ -665,6 +665,7 @@
           Se vedi risultati 0-0 sospetti su partite non ancora giocate (causati da un bug ora corretto), usa questo pulsante per rimuoverli.
         </div>
         <button class="btn btn-sm" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiSospetti()">🗑️ Pulisci risultati 0-0 sospetti</button>
+        <button class="btn btn-sm mt8" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiNonSelezionati()">🗑️ Pulisci risultati su partite non selezionate</button>
         <div id="pulizia-msg" class="mt8"></div>
         <hr class="divider">
         <button class="btn btn-outline btn-sm" onclick="diagnosticaRisultatiGiornata()">🔍 Diagnostica risultati salvati per giornata</button>
@@ -1188,6 +1189,65 @@ async function diagnosticaRisultatiGiornata() {
   document.getElementById('diag-risultati').innerHTML = html;
 }
 
+async function pulisciRisultatiNonSelezionati() {
+  // Ricarica dati freschi da Firebase
+  const [risFresh, parFresh, selFresh] = await Promise.all([
+    fbGet('/risultati'), fbGet('/partite'), fbGet('/selezione')
+  ]);
+  risultati = risFresh || {};
+  partite = parFresh || {};
+  selezione = selFresh || {};
+
+  // Trova risultati salvati su partite NON tra le selezionate dall'admin per quella giornata
+  const fuoriSelezione = [];
+  Object.keys(risultati).forEach(gKey => {
+    const risG = risultati[gKey] || {};
+    const parG = partite[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    if (!selMids.length) {
+      // Nessuna selezione fatta per questa giornata: TUTTI i risultati sono fuori contesto
+      Object.keys(risG).forEach(mid => {
+        const m = parG[mid] || {};
+        fuoriSelezione.push({ gKey, mid, h: m.h||mid, a: m.a||'', motivo: 'giornata non ancora aperta dall amministratore' });
+      });
+    } else {
+      Object.keys(risG).forEach(mid => {
+        if (!selMids.includes(mid)) {
+          const m = parG[mid] || {};
+          fuoriSelezione.push({ gKey, mid, h: m.h||mid, a: m.a||'', motivo: 'partita non tra le 10 selezionate' });
+        }
+      });
+    }
+  });
+
+  if (!fuoriSelezione.length) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Nessun risultato fuori selezione trovato.</div>';
+    return;
+  }
+
+  let elenco = fuoriSelezione.map(s => '• ' + s.h + ' vs ' + s.a + ' [' + s.gKey + '] — ' + s.motivo).join('\\n');
+  const conferma = confirm(
+    'Trovati ' + fuoriSelezione.length + ' risultati salvati su partite NON selezionate per i pronostici:\\n\\n' + elenco +
+    '\\n\\nRimuoverli? Non influenzano comunque la classifica, ma è bene pulirli.'
+  );
+  if (!conferma) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-info">Operazione annullata.</div>';
+    return;
+  }
+
+  try {
+    for (const s of fuoriSelezione) {
+      await fbDelete('/risultati/' + s.gKey + '/' + s.mid);
+      if (risultati[s.gKey]) delete risultati[s.gKey][s.mid];
+    }
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Rimossi ' + fuoriSelezione.length + ' risultati fuori selezione.</div>';
+    renderClassifica();
+  } catch(e) {
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-err">❌ Errore durante la pulizia</div>';
+  }
+}
+
 async function pulisciRisultatiSospetti() {
   // Ricarica dati freschi da Firebase prima di operare
   const [risFresh, parFresh] = await Promise.all([fbGet('/risultati'), fbGet('/partite')]);
@@ -1311,12 +1371,13 @@ function showSection(id) {
 // Verifica se TUTTE le partite selezionate di una giornata hanno un risultato completo
 function giornataCompletata(gKey) {
   const ris = risultati[gKey] || {};
-  const par = partite[gKey] || {};
   const selG = selezione[gKey] || {};
   const selMids = Object.keys(selG).filter(k => selG[k]);
-  const midsToUse = selMids.length ? selMids : Object.keys(par);
-  if (!midsToUse.length) return false;
-  return midsToUse.every(mid => {
+  // La giornata deve avere ESATTAMENTE le partite selezionate dall'admin.
+  // Senza selezione, la giornata non è considerabile iniziata, anche se
+  // qualche risultato è stato salvato in anticipo (es. da aggiornamento automatico prematuro).
+  if (!selMids.length) return false;
+  return selMids.every(mid => {
     const r = ris[mid];
     return r && r.h != null && r.a != null;
   });
@@ -1325,15 +1386,16 @@ function giornataCompletata(gKey) {
 // Verifica se una giornata ha ALMENO UN risultato (in corso, parziale)
 function giornataInCorso(gKey) {
   const ris = risultati[gKey] || {};
-  const par = partite[gKey] || {};
   const selG = selezione[gKey] || {};
   const selMids = Object.keys(selG).filter(k => selG[k]);
-  const midsToUse = selMids.length ? selMids : Object.keys(par);
-  const conRisultato = midsToUse.filter(mid => {
+  // Senza selezione delle 10 partite da parte dell'admin, la giornata
+  // non può essere considerata "in corso" anche se esistono risultati isolati.
+  if (!selMids.length) return false;
+  const conRisultato = selMids.filter(mid => {
     const r = ris[mid];
     return r && r.h != null && r.a != null;
   });
-  return conRisultato.length > 0 && conRisultato.length < midsToUse.length;
+  return conRisultato.length > 0 && conRisultato.length < selMids.length;
 }
 
 function calcPuntiGiornata(p, gKey) {
@@ -1341,10 +1403,12 @@ function calcPuntiGiornata(p, gKey) {
   const pros = pronostici[gKey] || {};
   const selG = selezione[gKey] || {};
   const selMids = Object.keys(selG).filter(k => selG[k]);
-  const midsToUse = selMids.length ? selMids : Object.keys(ris);
+  // Usa SOLO le partite ufficialmente selezionate dall'admin per i pronostici.
+  // Nessun fallback su tutti i risultati, per evitare di contare partite
+  // arrivate in anticipo prima ancora che la giornata fosse aperta.
   const mio = pros[p] || {};
   let pt = 0, re = 0;
-  midsToUse.forEach(mid => {
+  selMids.forEach(mid => {
     const r = ris[mid]; const m = mio[mid];
     if (!r || r.h==null || r.a==null) return;
     if (!m || m.h==null || m.a==null) return;
