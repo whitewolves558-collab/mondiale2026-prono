@@ -927,33 +927,30 @@ const WC_UPDATE_INTERVAL = 60000; // 60 secondi
 
 // Mappa nomi italiani/app -> nomi inglesi usati dall'API (estendibile)
 const WC_NAME_MAP = {
-  'Inghilterra':'England', 'Stati Uniti':'USA', 'Stati Uniti d\'America':'USA',
-  'Costa d\'Avorio':'Ivory Coast', "Costa d'Avorio":'Ivory Coast',
-  'Corea del Sud':'South Korea', 'Corea del sud':'South Korea',
-  'Paesi Bassi':'Netherlands', 'Olanda':'Netherlands',
-  'Germania':'Germany', 'Francia':'France', 'Spagna':'Spain', 'Italia':'Italy',
-  'Portogallo':'Portugal', 'Belgio':'Belgium', 'Croazia':'Croatia',
-  'Argentina':'Argentina', 'Brasile':'Brazil', 'Uruguay':'Uruguay',
-  'Marocco':'Morocco', 'Senegal':'Senegal', 'Ghana':'Ghana', 'Nigeria':'Nigeria',
-  'Egitto':'Egypt', 'Tunisia':'Tunisia', 'Algeria':'Algeria', 'Camerun':'Cameroon',
-  'Giappone':'Japan', 'Iran':'Iran', 'Arabia Saudita':'Saudi Arabia',
-  'Qatar':'Qatar', 'Australia':'Australia', 'Canada':'Canada', 'Messico':'Mexico',
-  'Panama':'Panama', 'Ecuador':'Ecuador', 'Colombia':'Colombia', 'Cile':'Chile',
-  'Perù':'Peru', 'Paraguay':'Paraguay', 'Bolivia':'Bolivia', 'Venezuela':'Venezuela',
-  'Polonia':'Poland', 'Svizzera':'Switzerland', 'Austria':'Austria', 'Serbia':'Serbia',
-  'Danimarca':'Denmark', 'Svezia':'Sweden', 'Norvegia':'Norway', 'Scozia':'Scotland',
-  'Galles':'Wales', 'Irlanda':'Ireland', 'Ucraina':'Ukraine', 'Turchia':'Turkey',
-  'Grecia':'Greece', 'Romania':'Romania', 'Slovacchia':'Slovakia', 'Slovenia':'Slovenia',
-  'Repubblica Ceca':'Czech Republic', 'Ungheria':'Hungary', 'Finlandia':'Finland',
-  'Islanda':'Iceland', 'Sudafrica':'South Africa', 'Capo Verde':'Cape Verde',
-  'Giordania':'Jordan', 'Uzbekistan':'Uzbekistan', 'Curacao':'Curaçao', 'Curaçao':'Curaçao',
-  'Nuova Zelanda':'New Zealand', 'Haiti':'Haiti'
+  'Algeria':'Algeria', 'Arabia Saudita':'Saudi Arabia', 'Argentina':'Argentina',
+  'Australia':'Australia', 'Austria':'Austria', 'Belgio':'Belgium',
+  'Bosnia-Erzegovina':'Bosnia and Herzegovina', 'Brasile':'Brazil', 'Canada':'Canada',
+  'Capo Verde':'Cape Verde', 'Colombia':'Colombia', 'Corea del Sud':'South Korea',
+  'Costa d\'Avorio':'Ivory Coast', 'Croazia':'Croatia', 'Curacao':'Curacao',
+  'Ecuador':'Ecuador', 'Egitto':'Egypt', 'Francia':'France',
+  'Germania':'Germany', 'Ghana':'Ghana', 'Giappone':'Japan', 'Giordania':'Jordan',
+  'Haiti':'Haiti', 'Inghilterra':'England', 'Iran':'Iran', 'Iraq':'Iraq',
+  'Marocco':'Morocco', 'Messico':'Mexico', 'Norvegia':'Norway',
+  'Nuova Zelanda':'New Zealand', 'Olanda':'Netherlands', 'Paesi Bassi':'Netherlands',
+  'Panama':'Panama', 'Paraguay':'Paraguay', 'Portogallo':'Portugal', 'Qatar':'Qatar',
+  'R.D. del Congo':'DR Congo', 'Rep. Ceca':'Czech Republic', 'Repubblica Ceca':'Czech Republic',
+  'Scozia':'Scotland', 'Senegal':'Senegal', 'Spagna':'Spain', 'Stati Uniti':'USA',
+  'Stati Uniti d\'America':'USA', 'Sudafrica':'South Africa', 'Svezia':'Sweden',
+  'Svizzera':'Switzerland', 'Tunisia':'Tunisia', 'Turchia':'Turkey', 'Uruguay':'Uruguay',
+  'Uzbekistan':'Uzbekistan', 'Italia':'Italy'
 };
 
 function normalizzaNomeSquadra(nome) {
   if (!nome) return '';
   const mapped = WC_NAME_MAP[nome] || nome;
-  return mapped.trim().toLowerCase();
+  return mapped.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // rimuove accenti (ç, é, ñ, ecc.)
+    .replace(/[^a-z0-9]/g, ''); // rimuove spazi, trattini, apostrofi per match più robusto
 }
 
 let fifaLastError = null;
@@ -1012,18 +1009,25 @@ async function aggiornaRisultatiAutomatico(manuale) {
       const awayNorm = normalizzaNomeSquadra(m.a);
 
       const match = fifaGames.find(fg => {
-        const fgHome = normalizzaNomeSquadra(fg.homeTeam?.name || fg.home_team || fg.home);
-        const fgAway = normalizzaNomeSquadra(fg.awayTeam?.name || fg.away_team || fg.away);
+        const fgHome = normalizzaNomeSquadra(
+          fg.home_team_name_en || fg.homeTeam?.name || fg.home_team || fg.home
+        );
+        const fgAway = normalizzaNomeSquadra(
+          fg.away_team_name_en || fg.awayTeam?.name || fg.away_team || fg.away
+        );
         return (fgHome === homeNorm && fgAway === awayNorm);
       });
 
       if (match) {
         partiteTrovateApi++;
-        const status = (match.status || '').toLowerCase();
-        const homeScore = match.homeScore ?? match.home_score ?? match.homeGoals;
-        const awayScore = match.awayScore ?? match.away_score ?? match.awayGoals;
-        // Aggiorna solo se ci sono punteggi numerici validi (live o completed)
-        if (homeScore != null && awayScore != null && (status==='live' || status==='completed' || status==='finished' || status==='in_play')) {
+        // Questa API usa 'finished' (stringa "TRUE"/"FALSE") e 'time_elapsed' invece di 'status'
+        const finished = (match.finished + '').toUpperCase() === 'TRUE';
+        const timeElapsed = (match.time_elapsed || '').toLowerCase();
+        const isLive = timeElapsed && timeElapsed !== 'not started' && timeElapsed !== '';
+        const homeScore = match.home_score ?? match.homeScore ?? match.homeGoals;
+        const awayScore = match.away_score ?? match.awayScore ?? match.awayGoals;
+        // Aggiorna se la partita è finita o in corso e ci sono punteggi validi
+        if (homeScore != null && awayScore != null && homeScore !== 'null' && awayScore !== 'null' && (finished || isLive)) {
           updates[mid] = { h: parseInt(homeScore), a: parseInt(awayScore) };
         }
       }
