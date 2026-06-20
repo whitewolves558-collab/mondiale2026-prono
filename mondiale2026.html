@@ -339,6 +339,7 @@
   /* ── LOADING ── */
   .spinner { display:inline-block; width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--oro); border-radius:50%; animation:spin 0.8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
   .loading-overlay { text-align:center; padding:40px; color:var(--grigio); font-family:'Oswald'; letter-spacing:0.2em; }
 
   /* ── GIORNATA SELECTOR ── */
@@ -450,6 +451,9 @@
     <span id="hdr-user">–</span>
     <span style="color:var(--grigio)">✕ esci</span>
   </div>
+  <div id="live-indicator" style="display:none;margin-top:6px;font-family:Oswald;font-size:0.62rem;letter-spacing:0.15em;color:#4ade80">
+    <span style="display:inline-block;width:6px;height:6px;background:#4ade80;border-radius:50%;margin-right:4px;animation:pulse 1.5s infinite"></span>AGGIORNAMENTO AUTOMATICO ATTIVO
+  </div>
 </div>
 
 <div id="nav">
@@ -557,6 +561,7 @@
         <button class="inner-tab" onclick="adminTab('risultati-admin')">Risultati</button>
         <button class="inner-tab" onclick="adminTab('visibilita-admin')">👁 Visibilità</button>
         <button class="inner-tab" onclick="adminTab('stampa-admin')">🖨️ Stampa</button>
+        <button class="inner-tab" onclick="adminTab('fifa-live-admin')">🔴 Live FIFA</button>
         <button class="inner-tab" onclick="adminTab('knockout-admin')">Knockout</button>
       </div>
       <div id="admin-setup" class="admin-section">
@@ -636,6 +641,27 @@
         <div id="ris-admin-msg" class="mt8"></div>
         <button class="btn btn-gold mt14" onclick="saveRisultatiAdmin()">💾 Salva e Calcola Punteggi</button>
       </div>
+      <div id="admin-fifa-live-admin" class="admin-section" style="display:none">
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;line-height:1.6">
+          I risultati delle partite FIFA selezionate vengono controllati automaticamente ogni 60 secondi e aggiornati su Firebase quando disponibili.<br>
+          Fonte dati: API pubblica gratuita worldcup26.ir
+        </div>
+        <div id="fifa-live-status" class="stat-row">
+          <span class="stat-label">Stato Aggiornamento</span>
+          <span class="stat-val" id="fifa-live-status-val">⏳ Verifica...</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Ultimo controllo</span>
+          <span class="stat-val" id="fifa-last-check" style="font-size:0.85rem">–</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Risultati aggiornati (sessione)</span>
+          <span class="stat-val" id="fifa-update-count">0</span>
+        </div>
+        <button class="btn btn-gold mt14" onclick="aggiornaRisultatiAutomatico(true)">🔄 Controlla ora</button>
+        <button class="btn btn-outline btn-sm mt8" id="fifa-toggle-btn" style="margin-left:8px" onclick="toggleAggiornamentoAutomatico()">⏸ Metti in pausa</button>
+      </div>
+
       <div id="admin-stampa-admin" class="admin-section" style="display:none">
         <p style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;">Seleziona cosa stampare:</p>
         <div class="print-options">
@@ -884,6 +910,185 @@ async function startApp() {
   if (isAdmin) document.getElementById('nav-admin').style.display = 'inline-block';
   await loadAll();
   showSection('classifica');
+  avviaAggiornamentoAutomatico();
+}
+
+
+// ══════════════════════════════════════════════════
+// AGGIORNAMENTO AUTOMATICO RISULTATI FIFA
+// ══════════════════════════════════════════════════
+
+const WC_API_URL = 'https://worldcup26.ir/get/games';
+let wcAutoUpdateTimer = null;
+let fifaUpdateCount = 0;
+let fifaLastCheck = null;
+const WC_UPDATE_INTERVAL = 60000; // 60 secondi
+
+// Mappa nomi italiani/app -> nomi inglesi usati dall'API (estendibile)
+const WC_NAME_MAP = {
+  'Inghilterra':'England', 'Stati Uniti':'USA', 'Stati Uniti d\'America':'USA',
+  'Costa d\'Avorio':'Ivory Coast', "Costa d'Avorio":'Ivory Coast',
+  'Corea del Sud':'South Korea', 'Corea del sud':'South Korea',
+  'Paesi Bassi':'Netherlands', 'Olanda':'Netherlands',
+  'Germania':'Germany', 'Francia':'France', 'Spagna':'Spain', 'Italia':'Italy',
+  'Portogallo':'Portugal', 'Belgio':'Belgium', 'Croazia':'Croatia',
+  'Argentina':'Argentina', 'Brasile':'Brazil', 'Uruguay':'Uruguay',
+  'Marocco':'Morocco', 'Senegal':'Senegal', 'Ghana':'Ghana', 'Nigeria':'Nigeria',
+  'Egitto':'Egypt', 'Tunisia':'Tunisia', 'Algeria':'Algeria', 'Camerun':'Cameroon',
+  'Giappone':'Japan', 'Iran':'Iran', 'Arabia Saudita':'Saudi Arabia',
+  'Qatar':'Qatar', 'Australia':'Australia', 'Canada':'Canada', 'Messico':'Mexico',
+  'Panama':'Panama', 'Ecuador':'Ecuador', 'Colombia':'Colombia', 'Cile':'Chile',
+  'Perù':'Peru', 'Paraguay':'Paraguay', 'Bolivia':'Bolivia', 'Venezuela':'Venezuela',
+  'Polonia':'Poland', 'Svizzera':'Switzerland', 'Austria':'Austria', 'Serbia':'Serbia',
+  'Danimarca':'Denmark', 'Svezia':'Sweden', 'Norvegia':'Norway', 'Scozia':'Scotland',
+  'Galles':'Wales', 'Irlanda':'Ireland', 'Ucraina':'Ukraine', 'Turchia':'Turkey',
+  'Grecia':'Greece', 'Romania':'Romania', 'Slovacchia':'Slovakia', 'Slovenia':'Slovenia',
+  'Repubblica Ceca':'Czech Republic', 'Ungheria':'Hungary', 'Finlandia':'Finland',
+  'Islanda':'Iceland', 'Sudafrica':'South Africa', 'Capo Verde':'Cape Verde',
+  'Giordania':'Jordan', 'Uzbekistan':'Uzbekistan', 'Curacao':'Curaçao', 'Curaçao':'Curaçao',
+  'Nuova Zelanda':'New Zealand', 'Haiti':'Haiti'
+};
+
+function normalizzaNomeSquadra(nome) {
+  if (!nome) return '';
+  const mapped = WC_NAME_MAP[nome] || nome;
+  return mapped.trim().toLowerCase();
+}
+
+async function fetchRisultatiFIFA() {
+  try {
+    const resp = await fetch(WC_API_URL);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    return data.games || data.matches || data.data || data;
+  } catch(e) {
+    console.error('Errore fetch FIFA API:', e);
+    return null;
+  }
+}
+
+async function aggiornaRisultatiAutomatico(manuale) {
+  const fifaGames = await fetchRisultatiFIFA();
+  if (!fifaGames || !Array.isArray(fifaGames)) {
+    if (manuale) alert('⚠️ Impossibile recuperare i risultati FIFA in questo momento. Riprova più tardi.');
+    return { aggiornate: 0, errore: true };
+  }
+
+  let aggiornate = 0;
+  const giornateReali = Object.keys(partite);
+
+  for (const gKey of giornateReali) {
+    const matchesG = partite[gKey] || {};
+    const risG = risultati[gKey] || {};
+    const updates = {};
+
+    Object.keys(matchesG).forEach(mid => {
+      const m = matchesG[mid];
+      // Salta se già abbiamo un risultato completo
+      if (risG[mid] && risG[mid].h != null && risG[mid].a != null) return;
+
+      const homeNorm = normalizzaNomeSquadra(m.h);
+      const awayNorm = normalizzaNomeSquadra(m.a);
+
+      const match = fifaGames.find(fg => {
+        const fgHome = normalizzaNomeSquadra(fg.homeTeam?.name || fg.home_team || fg.home);
+        const fgAway = normalizzaNomeSquadra(fg.awayTeam?.name || fg.away_team || fg.away);
+        return (fgHome === homeNorm && fgAway === awayNorm);
+      });
+
+      if (match) {
+        const status = (match.status || '').toLowerCase();
+        const homeScore = match.homeScore ?? match.home_score ?? match.homeGoals;
+        const awayScore = match.awayScore ?? match.away_score ?? match.awayGoals;
+        // Aggiorna solo se ci sono punteggi numerici validi (live o completed)
+        if (homeScore != null && awayScore != null && (status==='live' || status==='completed' || status==='finished' || status==='in_play')) {
+          updates[mid] = { h: parseInt(homeScore), a: parseInt(awayScore) };
+        }
+      }
+    });
+
+    if (Object.keys(updates).length) {
+      try {
+        await fbPatch('/risultati/' + gKey, updates);
+        risultati[gKey] = { ...risG, ...updates };
+        aggiornate += Object.keys(updates).length;
+      } catch(e) {
+        console.error('Errore salvataggio risultati', gKey, e);
+      }
+    }
+  }
+
+  if (aggiornate > 0) {
+    // Ricarica vista corrente se necessario
+    const activeSection = document.querySelector('.section.active');
+    if (activeSection) {
+      const id = activeSection.id.replace('sec-', '');
+      if (id==='classifica') renderClassifica();
+      if (id==='risultati') renderRisultati();
+      if (id==='calendario') renderCalendario();
+      if (id==='pronostici') renderPronostici();
+    }
+  }
+
+  fifaLastCheck = new Date();
+  if (aggiornate > 0) fifaUpdateCount += aggiornate;
+  updateFifaLiveStatusUI();
+
+  if (manuale) {
+    alert(aggiornate > 0 ? '✅ Aggiornati ' + aggiornate + ' risultati!' : 'ℹ️ Nessun nuovo risultato disponibile al momento.');
+  }
+
+  return { aggiornate, errore: false };
+}
+
+function updateFifaLiveStatusUI() {
+  const checkEl = document.getElementById('fifa-last-check');
+  const countEl = document.getElementById('fifa-update-count');
+  if (checkEl && fifaLastCheck) {
+    checkEl.textContent = fifaLastCheck.toLocaleTimeString('it-IT');
+  }
+  if (countEl) countEl.textContent = fifaUpdateCount;
+}
+
+function renderFifaLiveAdmin() {
+  const statusEl = document.getElementById('fifa-live-status-val');
+  const btnEl = document.getElementById('fifa-toggle-btn');
+  if (statusEl) {
+    statusEl.textContent = wcAutoUpdateTimer ? '🟢 Attivo' : '🔴 In pausa';
+    statusEl.style.color = wcAutoUpdateTimer ? '#4ade80' : '#f87171';
+  }
+  if (btnEl) btnEl.textContent = wcAutoUpdateTimer ? '⏸ Metti in pausa' : '▶ Riattiva';
+  updateFifaLiveStatusUI();
+}
+
+function toggleAggiornamentoAutomatico() {
+  if (wcAutoUpdateTimer) {
+    fermaAggiornamentoAutomatico();
+    const ind = document.getElementById('live-indicator');
+    if (ind) ind.style.display = 'none';
+  } else {
+    avviaAggiornamentoAutomatico();
+  }
+  renderFifaLiveAdmin();
+}
+
+function avviaAggiornamentoAutomatico() {
+  if (wcAutoUpdateTimer) return; // già attivo
+  const ind = document.getElementById('live-indicator');
+  if (ind) ind.style.display = 'block';
+  // Prima chiamata immediata
+  aggiornaRisultatiAutomatico(false);
+  wcAutoUpdateTimer = setInterval(() => {
+    aggiornaRisultatiAutomatico(false);
+  }, WC_UPDATE_INTERVAL);
+  console.log('Aggiornamento automatico risultati FIFA avviato (ogni 60s)');
+}
+
+function fermaAggiornamentoAutomatico() {
+  if (wcAutoUpdateTimer) {
+    clearInterval(wcAutoUpdateTimer);
+    wcAutoUpdateTimer = null;
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -2319,6 +2524,7 @@ function adminTab(id) {
   if (id==='knockout-admin') renderKoAdmin();
   if (id==='calendario-admin') renderCalAdminPreview();
   if (id==='visibilita-admin') renderVisibilitaAdmin();
+  if (id==='fifa-live-admin') renderFifaLiveAdmin();
   // stampa-admin non richiede inizializzazione
 }
 
