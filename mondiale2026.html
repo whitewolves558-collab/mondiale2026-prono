@@ -666,6 +666,9 @@
         </div>
         <button class="btn btn-sm" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiSospetti()">🗑️ Pulisci risultati 0-0 sospetti</button>
         <div id="pulizia-msg" class="mt8"></div>
+        <hr class="divider">
+        <button class="btn btn-outline btn-sm" onclick="diagnosticaRisultatiGiornata()">🔍 Diagnostica risultati salvati per giornata</button>
+        <div id="diag-risultati" class="mt8"></div>
       </div>
 
       <div id="admin-stampa-admin" class="admin-section" style="display:none">
@@ -1144,22 +1147,69 @@ function toggleAggiornamentoAutomatico() {
   renderFifaLiveAdmin();
 }
 
+async function diagnosticaRisultatiGiornata() {
+  // Ricarica i dati freschi da Firebase per essere sicuri al 100%
+  const [risFresh, parFresh, selFresh] = await Promise.all([
+    fbGet('/risultati'), fbGet('/partite'), fbGet('/selezione')
+  ]);
+  risultati = risFresh || {};
+  partite = parFresh || {};
+  selezione = selFresh || {};
+
+  let html = '<div style="font-size:0.75rem;font-family:Oswald;color:var(--text);line-height:1.7">';
+  for (let g=1; g<=3; g++) {
+    const gKey = 'g'+g;
+    const risG = risultati[gKey] || {};
+    const parG = partite[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    const nRisultati = Object.keys(risG).length;
+    const completata = giornataCompletata(gKey);
+    const inCorso = giornataInCorso(gKey);
+
+    html += '<div style="margin-bottom:10px;padding:8px;background:rgba(201,168,76,0.06);border-radius:6px">';
+    html += '<b>Giornata ' + g + '</b>: ' + nRisultati + ' risultati salvati su Firebase | '
+      + 'Selezionate: ' + selMids.length + ' | '
+      + 'Completata: ' + (completata ? 'SÌ' : 'no') + ' | '
+      + 'In corso: ' + (inCorso ? 'SÌ' : 'no');
+
+    if (nRisultati > 0) {
+      html += '<div style="margin-top:6px;padding-left:8px;border-left:2px solid var(--border)">';
+      Object.keys(risG).forEach(mid => {
+        const r = risG[mid];
+        const m = parG[mid] || {};
+        html += (m.h||mid) + ' vs ' + (m.a||'') + ' → ' + r.h + '-' + r.a + '<br>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  document.getElementById('diag-risultati').innerHTML = html;
+}
+
 async function pulisciRisultatiSospetti() {
+  // Ricarica dati freschi da Firebase prima di operare
+  const [risFresh, parFresh] = await Promise.all([fbGet('/risultati'), fbGet('/partite')]);
+  risultati = risFresh || {};
+  partite = parFresh || {};
+
   // Trova tutte le partite con risultato 0-0 nelle giornate caricate
+  // (confronto debole == per gestire sia numeri che stringhe "0")
   const sospette = [];
   Object.keys(partite).forEach(gKey => {
     const matchesG = partite[gKey] || {};
     const risG = risultati[gKey] || {};
     Object.keys(matchesG).forEach(mid => {
       const r = risG[mid];
-      if (r && r.h === 0 && r.a === 0) {
+      if (r && r.h != null && r.a != null && r.h == 0 && r.a == 0) {
         sospette.push({ gKey, mid, h: matchesG[mid].h, a: matchesG[mid].a, data: matchesG[mid].data });
       }
     });
   });
 
   if (!sospette.length) {
-    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Nessun risultato 0-0 sospetto trovato.</div>';
+    document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-ok">✅ Nessun risultato 0-0 trovato.</div>';
     return;
   }
 
