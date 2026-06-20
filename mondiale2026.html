@@ -2079,12 +2079,12 @@ async function saveRisultatiAdmin() {
   const data={};
   mids.forEach(mid=>{
     const hEl=document.getElementById('ra_h_'+mid); const aEl=document.getElementById('ra_a_'+mid);
-    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') data[mid]={h:parseInt(hEl.value),a:parseInt(aEl.value)};
+    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') data[mid]={h:parseInt(hEl.value),a:parseInt(aEl.value),manuale:true};
   });
   try {
     await fbSet('/risultati/'+gKey,data);
     risultati[gKey]=data;
-    document.getElementById('ris-admin-msg').innerHTML='<div class="msg msg-ok">✅ Risultati salvati! I punteggi sono aggiornati.</div>';
+    document.getElementById('ris-admin-msg').innerHTML='<div class="msg msg-ok">✅ Risultati salvati manualmente! Protetti da sovrascritture automatiche.</div>';
     setTimeout(()=>document.getElementById('ris-admin-msg').innerHTML='',4000);
   } catch(e) { document.getElementById('ris-admin-msg').innerHTML='<div class="msg msg-err">❌ Errore</div>'; }
 }
