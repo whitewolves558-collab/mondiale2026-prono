@@ -919,6 +919,7 @@ async function startApp() {
 // ══════════════════════════════════════════════════
 
 const WC_API_URL = 'https://worldcup26.ir/get/games';
+const WC_API_PROXY = 'https://corsproxy.io/?url=' + encodeURIComponent(WC_API_URL);
 let wcAutoUpdateTimer = null;
 let fifaUpdateCount = 0;
 let fifaLastCheck = null;
@@ -955,26 +956,43 @@ function normalizzaNomeSquadra(nome) {
   return mapped.trim().toLowerCase();
 }
 
+let fifaLastError = null;
+let fifaLastRawSample = null;
+
 async function fetchRisultatiFIFA() {
-  try {
-    const resp = await fetch(WC_API_URL);
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    return data.games || data.matches || data.data || data;
-  } catch(e) {
-    console.error('Errore fetch FIFA API:', e);
-    return null;
+  // Tenta prima la chiamata diretta, poi con proxy CORS se fallisce
+  const tentativi = [WC_API_URL, WC_API_PROXY];
+  for (const url of tentativi) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const games = data.games || data.matches || data.data || data;
+      fifaLastError = null;
+      if (Array.isArray(games) && games.length) fifaLastRawSample = games[0];
+      return games;
+    } catch(e) {
+      console.warn('Tentativo fallito (' + url.substring(0,40) + '...):', e.message || e);
+      fifaLastError = e.message || String(e);
+      continue;
+    }
   }
+  console.error('Tutti i tentativi di fetch FIFA API falliti');
+  return null;
 }
 
 async function aggiornaRisultatiAutomatico(manuale) {
   const fifaGames = await fetchRisultatiFIFA();
   if (!fifaGames || !Array.isArray(fifaGames)) {
-    if (manuale) alert('⚠️ Impossibile recuperare i risultati FIFA in questo momento. Riprova più tardi.');
+    fifaLastCheck = new Date();
+    updateFifaLiveStatusUI();
+    if (manuale) alert('Impossibile recuperare i risultati FIFA. Errore: ' + (fifaLastError || 'sconosciuto') + '. Possibili cause: il torneo non e ancora iniziato, l\'API blocca le richieste dal browser (CORS), oppure il servizio e temporaneamente offline.');
     return { aggiornate: 0, errore: true };
   }
 
   let aggiornate = 0;
+  let partiteControllate = 0;
+  let partiteTrovateApi = 0;
   const giornateReali = Object.keys(partite);
 
   for (const gKey of giornateReali) {
@@ -986,6 +1004,7 @@ async function aggiornaRisultatiAutomatico(manuale) {
       const m = matchesG[mid];
       // Salta se già abbiamo un risultato completo
       if (risG[mid] && risG[mid].h != null && risG[mid].a != null) return;
+      partiteControllate++;
 
       const homeNorm = normalizzaNomeSquadra(m.h);
       const awayNorm = normalizzaNomeSquadra(m.a);
@@ -997,6 +1016,7 @@ async function aggiornaRisultatiAutomatico(manuale) {
       });
 
       if (match) {
+        partiteTrovateApi++;
         const status = (match.status || '').toLowerCase();
         const homeScore = match.homeScore ?? match.home_score ?? match.homeGoals;
         const awayScore = match.awayScore ?? match.away_score ?? match.awayGoals;
@@ -1035,7 +1055,15 @@ async function aggiornaRisultatiAutomatico(manuale) {
   updateFifaLiveStatusUI();
 
   if (manuale) {
-    alert(aggiornate > 0 ? '✅ Aggiornati ' + aggiornate + ' risultati!' : 'ℹ️ Nessun nuovo risultato disponibile al momento.');
+    let msg = aggiornate > 0
+      ? ('Aggiornati ' + aggiornate + ' risultati!')
+      : 'Nessun nuovo risultato disponibile al momento.';
+    msg += ' | Controllate: ' + partiteControllate + ' | Trovate su API: ' + partiteTrovateApi + ' | Totale partite API: ' + fifaGames.length;
+    if (partiteControllate > 0 && partiteTrovateApi === 0) {
+      msg += ' | ATTENZIONE: nessuna corrispondenza nomi squadre. Controlla la console.';
+    }
+    alert(msg);
+    console.log('FIFA API - campione partita ricevuta:', fifaLastRawSample);
   }
 
   return { aggiornate, errore: false };
@@ -1117,6 +1145,11 @@ async function loadAll() {
 // NAV
 // ══════════════════════════════════════════════════
 function showSection(id) {
+  // BLOCCO SICUREZZA: la sezione admin è accessibile SOLO se isAdmin === true
+  if (id === 'admin' && !isAdmin) {
+    console.warn('Accesso negato alla sezione admin');
+    id = 'classifica';
+  }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('sec-'+id).classList.add('active');
@@ -1131,7 +1164,7 @@ function showSection(id) {
   if (id==='calendario') renderCalendario();
   if (id==='altrui') { loadPronosticiAltrui().then(renderAltrui); }
   if (id==='profilo') renderProfilo();
-  if (id==='admin') { renderAdminSetup(); renderAdminGiocatori(); }
+  if (id==='admin' && isAdmin) { renderAdminSetup(); renderAdminGiocatori(); }
 }
 
 // ══════════════════════════════════════════════════
