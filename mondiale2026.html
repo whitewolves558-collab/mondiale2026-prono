@@ -666,6 +666,8 @@
         </div>
         <button class="btn btn-sm" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiSospetti()">🗑️ Pulisci risultati 0-0 sospetti</button>
         <button class="btn btn-sm mt8" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiNonSelezionati()">🗑️ Pulisci risultati su partite non selezionate</button>
+        <button class="btn btn-sm mt8" style="background:rgba(192,57,43,0.35);color:#fff;border:1px solid rgba(192,57,43,0.6)" onclick="resetCompletoRisultati()">⚠️ Reset rapido: rimuovi TUTTI i risultati fuori dalle 10 selezionate (tutte le giornate)</button>
+        <div id="reset-msg" class="mt8"></div>
         <div id="pulizia-msg" class="mt8"></div>
         <hr class="divider">
         <button class="btn btn-outline btn-sm" onclick="diagnosticaRisultatiGiornata()">🔍 Diagnostica risultati salvati per giornata</button>
@@ -1007,10 +1009,17 @@ async function aggiornaRisultatiAutomatico(manuale) {
   for (const gKey of giornateReali) {
     const matchesG = partite[gKey] || {};
     const risG = risultati[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
     const updates = {};
 
-    Object.keys(matchesG).forEach(mid => {
+    // Aggiorna SOLO le partite ufficialmente selezionate dall'admin per questa giornata.
+    // Se l'admin non ha ancora selezionato nulla, non si scrive nessun risultato.
+    if (!selMids.length) continue;
+
+    selMids.forEach(mid => {
       const m = matchesG[mid];
+      if (!m) return;
       // Salta se già abbiamo un risultato completo
       if (risG[mid] && risG[mid].h != null && risG[mid].a != null) return;
       partiteControllate++;
@@ -1033,17 +1042,17 @@ async function aggiornaRisultatiAutomatico(manuale) {
         // Questa API usa 'finished' (stringa "TRUE"/"FALSE") e 'time_elapsed' per lo stato
         const finished = (match.finished + '').toUpperCase() === 'TRUE';
         const timeElapsed = (match.time_elapsed || '').toString().toLowerCase().trim();
-        // Una partita è considerata iniziata SOLO se time_elapsed indica esplicitamente
-        // uno stato di gioco reale (minuti giocati, 'live', 'finished', tempi supplementari, ecc.)
-        // Esclude esplicitamente: vuoto, 'not started', '0', 'scheduled', 'upcoming'
-        const statiNonIniziati = ['', 'not started', '0', 'scheduled', 'upcoming', 'tbd', 'null'];
-        const isLive = timeElapsed && !statiNonIniziati.includes(timeElapsed) && !finished;
+        // WHITELIST positiva: consideriamo "in corso" SOLO se il valore indica
+        // esplicitamente e inequivocabilmente che la partita sta giocando.
+        // Qualsiasi valore non riconosciuto è trattato come NON iniziata (sicurezza first).
+        const statiLive = ['live', 'in progress', 'first half', 'second half', 'half time',
+          'extra time', 'penalties', '1h', '2h', 'ht'];
+        const isLive = statiLive.some(s => timeElapsed.includes(s));
         const homeScore = match.home_score ?? match.homeScore ?? match.homeGoals;
         const awayScore = match.away_score ?? match.awayScore ?? match.awayGoals;
         const scoresValid = homeScore != null && awayScore != null
           && homeScore !== 'null' && awayScore !== 'null' && homeScore !== '' && awayScore !== '';
         // Aggiorna SOLO se la partita è esplicitamente finita o esplicitamente in corso
-        // (mai per partite non ancora iniziate, anche se hanno punteggio 0-0 di default nell'API)
         if (scoresValid && (finished || isLive)) {
           updates[mid] = { h: parseInt(homeScore), a: parseInt(awayScore) };
         }
@@ -1245,6 +1254,59 @@ async function pulisciRisultatiNonSelezionati() {
     renderClassifica();
   } catch(e) {
     document.getElementById('pulizia-msg').innerHTML = '<div class="msg msg-err">❌ Errore durante la pulizia</div>';
+  }
+}
+
+async function resetCompletoRisultati() {
+  const [risFresh, parFresh, selFresh] = await Promise.all([
+    fbGet('/risultati'), fbGet('/partite'), fbGet('/selezione')
+  ]);
+  risultati = risFresh || {};
+  partite = parFresh || {};
+  selezione = selFresh || {};
+
+  const daRimuovere = [];
+  const riepilogoPerGiornata = {};
+
+  Object.keys(risultati).forEach(gKey => {
+    const risG = risultati[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    Object.keys(risG).forEach(mid => {
+      if (!selMids.includes(mid)) {
+        daRimuovere.push({ gKey, mid });
+        riepilogoPerGiornata[gKey] = (riepilogoPerGiornata[gKey] || 0) + 1;
+      }
+    });
+  });
+
+  if (!daRimuovere.length) {
+    document.getElementById('reset-msg').innerHTML = '<div class="msg msg-ok">✅ Nessun risultato da rimuovere.</div>';
+    return;
+  }
+
+  const riepilogo = Object.keys(riepilogoPerGiornata)
+    .map(g => g + ': ' + riepilogoPerGiornata[g] + ' risultati')
+    .join('\\n');
+
+  const conferma = confirm(
+    'Verranno rimossi ' + daRimuovere.length + ' risultati totali, fuori dalle 10 partite selezionate:\\n\\n' + riepilogo +
+    '\\n\\nProcedere?'
+  );
+  if (!conferma) {
+    document.getElementById('reset-msg').innerHTML = '<div class="msg msg-info">Operazione annullata.</div>';
+    return;
+  }
+
+  try {
+    for (const item of daRimuovere) {
+      await fbDelete('/risultati/' + item.gKey + '/' + item.mid);
+      if (risultati[item.gKey]) delete risultati[item.gKey][item.mid];
+    }
+    document.getElementById('reset-msg').innerHTML = '<div class="msg msg-ok">✅ Rimossi ' + daRimuovere.length + ' risultati. Classifica e calendario aggiornati.</div>';
+    renderClassifica();
+  } catch(e) {
+    document.getElementById('reset-msg').innerHTML = '<div class="msg msg-err">❌ Errore durante il reset</div>';
   }
 }
 
