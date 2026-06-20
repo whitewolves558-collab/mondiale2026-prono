@@ -986,7 +986,9 @@ async function aggiornaRisultatiAutomatico(manuale) {
   if (!fifaGames || !Array.isArray(fifaGames)) {
     fifaLastCheck = new Date();
     updateFifaLiveStatusUI();
-    if (manuale) alert('Impossibile recuperare i risultati FIFA. Errore: ' + (fifaLastError || 'sconosciuto') + '. Possibili cause: il torneo non e ancora iniziato, l\'API blocca le richieste dal browser (CORS), oppure il servizio e temporaneamente offline.');
+    if (manuale) {
+      mostraDiagnosticaFifa('❌ Impossibile recuperare i risultati FIFA.<br><span style="font-size:0.8rem;color:#888">Errore: ' + (fifaLastError || 'sconosciuto') + '</span>', 0, 0, 0, null);
+    }
     return { aggiornate: 0, errore: true };
   }
 
@@ -1056,17 +1058,42 @@ async function aggiornaRisultatiAutomatico(manuale) {
 
   if (manuale) {
     let msg = aggiornate > 0
-      ? ('Aggiornati ' + aggiornate + ' risultati!')
-      : 'Nessun nuovo risultato disponibile al momento.';
-    msg += ' | Controllate: ' + partiteControllate + ' | Trovate su API: ' + partiteTrovateApi + ' | Totale partite API: ' + fifaGames.length;
-    if (partiteControllate > 0 && partiteTrovateApi === 0) {
-      msg += ' | ATTENZIONE: nessuna corrispondenza nomi squadre. Controlla la console.';
-    }
-    alert(msg);
-    console.log('FIFA API - campione partita ricevuta:', fifaLastRawSample);
+      ? ('✅ Aggiornati ' + aggiornate + ' risultati!')
+      : 'ℹ️ Nessun nuovo risultato disponibile al momento.';
+    mostraDiagnosticaFifa(msg, partiteControllate, partiteTrovateApi, fifaGames.length, fifaLastRawSample);
   }
 
   return { aggiornate, errore: false };
+}
+
+function mostraDiagnosticaFifa(msgPrincipale, controllate, trovate, totaleApi, sample) {
+  const existing = document.getElementById('fifa-diag-overlay');
+  if (existing) existing.remove();
+
+  let sampleHtml = '';
+  if (sample) {
+    sampleHtml = '<div style="margin-top:12px;font-size:0.7rem;color:#888;text-align:left;background:#f5f5f5;padding:10px;border-radius:6px;max-height:150px;overflow:auto;white-space:pre-wrap">' + JSON.stringify(sample, null, 2).substring(0, 600) + '</div>';
+  }
+
+  const warning = (controllate > 0 && trovate === 0)
+    ? '<div style="margin-top:10px;color:#c0392b;font-size:0.82rem">⚠️ Nessuna corrispondenza nomi squadre trovata. Vedi esempio dati API sotto.</div>'
+    : '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'fifa-diag-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:12px;padding:20px;max-width:340px;width:100%;color:#000;font-family:sans-serif">'
+    + '<div style="font-size:1rem;font-weight:600;margin-bottom:12px">' + msgPrincipale + '</div>'
+    + '<div style="font-size:0.85rem;line-height:1.8;color:#333">'
+    + 'Partite controllate: <b>' + controllate + '</b><br>'
+    + 'Trovate nell\'API: <b>' + trovate + '</b><br>'
+    + 'Totale partite ricevute: <b>' + totaleApi + '</b>'
+    + '</div>'
+    + warning
+    + sampleHtml
+    + '<button onclick="document.getElementById(\'fifa-diag-overlay\').remove()" style="margin-top:16px;width:100%;padding:10px;background:#0a2e1a;color:#c9a84c;border:none;border-radius:6px;font-size:0.9rem">Chiudi</button>'
+    + '</div>';
+  document.body.appendChild(overlay);
 }
 
 function updateFifaLiveStatusUI() {
