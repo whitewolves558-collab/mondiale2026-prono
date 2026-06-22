@@ -671,6 +671,8 @@
         <div id="pulizia-msg" class="mt8"></div>
         <hr class="divider">
         <button class="btn btn-outline btn-sm" onclick="diagnosticaRisultatiGiornata()">🔍 Diagnostica risultati salvati per giornata</button>
+        <button class="btn btn-outline btn-sm mt8" onclick="cercaSquadraInApi()">🔎 Cerca squadra nell'API (debug)</button>
+        <div id="cerca-squadra-result" class="mt8"></div>
         <div id="diag-risultati" class="mt8"></div>
       </div>
 
@@ -978,7 +980,17 @@ async function fetchRisultatiFIFA() {
       const data = await resp.json();
       const games = data.games || data.matches || data.data || data;
       fifaLastError = null;
-      if (Array.isArray(games) && games.length) fifaLastRawSample = games[0];
+      if (Array.isArray(games) && games.length) {
+        fifaLastRawSample = games[0]; // default: prima partita
+        // Cerca anche Spain o Saudi Arabia per il debug
+        const sampleSpagna = games.find(g =>
+          (g.home_team_name_en||'').toLowerCase().includes('spain') ||
+          (g.away_team_name_en||'').toLowerCase().includes('spain') ||
+          (g.home_team_name_en||'').toLowerCase().includes('saudi') ||
+          (g.away_team_name_en||'').toLowerCase().includes('saudi')
+        );
+        if (sampleSpagna) fifaLastRawSample = sampleSpagna;
+      }
       return games;
     } catch(e) {
       console.warn('Tentativo fallito (' + url.substring(0,40) + '...):', e.message || e);
@@ -1106,7 +1118,7 @@ function mostraDiagnosticaFifa(msgPrincipale, controllate, trovate, totaleApi, s
   }
 
   const warning = (controllate > 0 && trovate === 0)
-    ? '<div style="margin-top:10px;color:#c0392b;font-size:0.82rem">⚠️ Nessuna corrispondenza nomi squadre trovata. Vedi esempio dati API sotto.</div>'
+    ? '<div style="margin-top:10px;color:#c0392b;font-size:0.82rem">⚠️ Nessuna corrispondenza nomi squadre trovata.<br>Esempio campione API sotto (scorri). Cerca il nome reale di Spagna/Arabia Saudita nell\'API e comunicamelo.</div>'
     : '';
 
   const overlay = document.createElement('div');
@@ -1155,6 +1167,42 @@ function toggleAggiornamentoAutomatico() {
     avviaAggiornamentoAutomatico();
   }
   renderFifaLiveAdmin();
+}
+
+async function cercaSquadraInApi() {
+  const el = document.getElementById('cerca-squadra-result');
+  el.innerHTML = '<div class="msg msg-info">Scaricando dati API...</div>';
+  const games = await fetchRisultatiFIFA();
+  if (!games || !Array.isArray(games)) {
+    el.innerHTML = '<div class="msg msg-err">❌ Impossibile contattare l\'API</div>';
+    return;
+  }
+  // Cerca Spain e Saudi Arabia
+  const termini = ['spain', 'saudi', 'arabia'];
+  const trovate = games.filter(g => {
+    const h = (g.home_team_name_en||'').toLowerCase();
+    const a = (g.away_team_name_en||'').toLowerCase();
+    return termini.some(t => h.includes(t) || a.includes(t));
+  });
+  if (!trovate.length) {
+    el.innerHTML = '<div class="msg msg-err">❌ Nessuna partita con Spain/Saudi nell\'API. Nomi probabilmente diversi.</div>';
+    // Mostra tutti i nomi unici nell'API per confronto
+    const nomiUnici = [...new Set(games.flatMap(g => [g.home_team_name_en, g.away_team_name_en]).filter(Boolean))].sort();
+    el.innerHTML += '<div style="font-size:0.72rem;color:var(--grigio);margin-top:8px;max-height:150px;overflow:auto">'
+      + 'Tutti i nomi squadra nell\'API:<br>' + nomiUnici.join(', ') + '</div>';
+    return;
+  }
+  let html = '<div style="font-size:0.78rem;color:var(--text);margin-top:8px">';
+  trovate.forEach(g => {
+    html += '<div style="padding:4px 0;border-bottom:1px solid var(--border)">'
+      + g.home_team_name_en + ' vs ' + g.away_team_name_en
+      + ' | Score: ' + g.home_score + '-' + g.away_score
+      + ' | finished: ' + g.finished
+      + ' | time_elapsed: ' + g.time_elapsed
+      + '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = '<div class="msg msg-ok">✅ Trovate ' + trovate.length + ' partite:</div>' + html;
 }
 
 async function diagnosticaRisultatiGiornata() {
