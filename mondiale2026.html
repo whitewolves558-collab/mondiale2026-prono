@@ -1032,8 +1032,9 @@ async function aggiornaRisultatiAutomatico(manuale) {
     selMids.forEach(mid => {
       const m = matchesG[mid];
       if (!m) return;
-      // Salta se già abbiamo un risultato completo
-      if (risG[mid] && risG[mid].h != null && risG[mid].a != null) return;
+      // Salta solo se il risultato è stato inserito MANUALMENTE dall'admin (flag manuale:true)
+      // I risultati automatici vengono ricontrollati e corretti se necessario
+      if (risG[mid] && risG[mid].manuale === true) return;
       partiteControllate++;
 
       const homeNorm = normalizzaNomeSquadra(m.h);
