@@ -3106,14 +3106,17 @@ function trovaProssimaPartita() {
     const selG = selezione[gKey] || {};
     const selMids = Object.keys(selG).filter(k => selG[k]);
     const risG = risultati[gKey] || {};
-    const midsToCheck = selMids.length ? selMids : Object.keys(matchesG);
 
-    for (const mid of midsToCheck) {
+    // Usa SOLO le partite selezionate dall'admin per i pronostici.
+    // Se non ce ne sono ancora per questa giornata, salta.
+    if (!selMids.length) continue;
+
+    for (const mid of selMids) {
       const m = matchesG[mid];
       const r = risG[mid];
       if (!m) continue;
-      // Salta partite già con risultato definitivo
-      if (r && r.h != null && r.a != null && r.manuale) continue;
+      // Salta partite che hanno GIÀ un risultato (automatico o manuale)
+      if (r && r.h != null && r.a != null) continue;
       const data = parsaDataPartita(m.data);
       if (!data) continue;
       if (data.getTime() > ora) {
