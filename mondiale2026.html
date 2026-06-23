@@ -412,11 +412,36 @@
     #print-area { display:block !important; }
     body::before { display:none !important; }
   }
+  /* ── COUNTDOWN ── */
+  .countdown-card {
+    background: linear-gradient(135deg, rgba(20,92,50,0.6) 0%, rgba(10,46,26,0.9) 100%);
+    border: 1px solid var(--border2);
+    border-radius: 12px; padding: 16px; margin-bottom: 14px;
+    text-align: center;
+  }
+  .countdown-label { font-family:'Oswald'; font-size:0.7rem; letter-spacing:0.2em; color:var(--oro); text-transform:uppercase; margin-bottom:8px; }
+  .countdown-match { font-family:'Cinzel'; font-size:0.95rem; color:var(--text); margin-bottom:10px; }
+  .countdown-timer { display:flex; justify-content:center; gap:16px; }
+  .countdown-unit { text-align:center; }
+  .countdown-num { font-family:'Cinzel'; font-size:2rem; font-weight:700; color:var(--oro2); line-height:1; }
+  .countdown-unit-label { font-family:'Oswald'; font-size:0.6rem; letter-spacing:0.2em; color:var(--grigio); text-transform:uppercase; margin-top:2px; }
+  .countdown-sep { font-family:'Cinzel'; font-size:1.8rem; color:var(--border2); align-self:flex-start; padding-top:4px; }
+
+  /* ── OFFLINE BANNER ── */
+  #offline-banner {
+    display:none; position:fixed; top:0; left:0; right:0; z-index:500;
+    background:#c0392b; color:#fff; text-align:center;
+    font-family:'Oswald'; font-size:0.75rem; letter-spacing:0.15em;
+    padding:8px; text-transform:uppercase;
+  }
+
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; }
   input[type=number] { -moz-appearance:textfield; }
 </style>
 </head>
 <body>
+
+<div id="offline-banner">📡 Modalità offline — mostrando dati salvati</div>
 
 <!-- ══════════════════════ LOGIN ══════════════════════ -->
 <div id="login-screen">
@@ -471,6 +496,7 @@
 
   <!-- ── CLASSIFICA ── -->
   <div id="sec-classifica" class="section active">
+    <div id="countdown-container"></div>
     <div id="classifica-content"><div class="loading-overlay"><div class="spinner"></div><div style="margin-top:10px">Caricamento...</div></div></div>
   </div>
 
@@ -562,6 +588,7 @@
         <button class="inner-tab" onclick="adminTab('visibilita-admin')">👁 Visibilità</button>
         <button class="inner-tab" onclick="adminTab('stampa-admin')">🖨️ Stampa</button>
         <button class="inner-tab" onclick="adminTab('fifa-live-admin')">🔴 Live FIFA</button>
+        <button class="inner-tab" onclick="adminTab('notifiche-admin')">🔔 Notifiche</button>
         <button class="inner-tab" onclick="adminTab('knockout-admin')">Knockout</button>
       </div>
       <div id="admin-setup" class="admin-section">
@@ -674,6 +701,29 @@
         <button class="btn btn-outline btn-sm mt8" onclick="cercaSquadraInApi()">🔎 Cerca squadra nell'API (debug)</button>
         <div id="cerca-squadra-result" class="mt8"></div>
         <div id="diag-risultati" class="mt8"></div>
+      </div>
+
+      <div id="admin-notifiche-admin" class="admin-section" style="display:none">
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;line-height:1.6">
+          Invia una notifica a tutti i giocatori che hanno l'app aperta o in background.
+        </div>
+        <div class="input-group">
+          <label>Titolo notifica</label>
+          <input type="text" id="notif-titolo" placeholder="es. Nuova giornata disponibile!">
+        </div>
+        <div class="input-group">
+          <label>Messaggio</label>
+          <input type="text" id="notif-testo" placeholder="es. Inserisci i tuoi pronostici per la Giornata 2">
+        </div>
+        <button class="btn btn-gold mt8" onclick="inviaNotificaManuale()">🔔 Invia Notifica</button>
+        <div id="notif-msg" class="mt8"></div>
+        <hr class="divider">
+        <div class="small-label" style="margin-bottom:8px">Notifiche automatiche</div>
+        <div style="font-size:0.82rem;color:var(--text2);font-family:Oswald;letter-spacing:0.06em;line-height:1.6">
+          ✅ Quando un risultato viene aggiornato automaticamente<br>
+          ✅ Quando apri una nuova giornata (visibilità pronostici)<br>
+          Le notifiche arrivano ai giocatori che hanno autorizzato le notifiche al primo accesso.
+        </div>
       </div>
 
       <div id="admin-stampa-admin" class="admin-section" style="display:none">
@@ -925,6 +975,15 @@ async function startApp() {
   await loadAll();
   showSection('classifica');
   avviaAggiornamentoAutomatico();
+  avviaCountdown();
+  initOfflineDetection();
+  saveToCache(); // salva snapshot iniziale per offline
+  // Avvia notifiche (chiede permesso all'utente)
+  setTimeout(() => initNotifiche(), 2000);
+  // Polling notifiche ogni 30 secondi
+  setInterval(checkNotifiche, 30000);
+  // Aggiorna cache ogni 5 minuti
+  setInterval(saveToCache, 300000);
 }
 
 
@@ -1096,7 +1155,21 @@ async function aggiornaRisultatiAutomatico(manuale) {
   }
 
   fifaLastCheck = new Date();
-  if (aggiornate > 0) fifaUpdateCount += aggiornate;
+  if (aggiornate > 0) {
+    fifaUpdateCount += aggiornate;
+    // Invia notifica push a tutti i giocatori
+    inviaNotificaPush(
+      'Risultati aggiornati!',
+      aggiornate + (aggiornate === 1 ? ' nuovo risultato disponibile.' : ' nuovi risultati disponibili.') + ' Apri l\'app!'
+    );
+    // Aggiorna cache offline
+    saveToCache();
+    // Aggiorna countdown
+    avviaCountdown();
+    // Aggiorna classifica se visibile
+    const sec = document.querySelector('.section.active');
+    if (sec && sec.id === 'sec-classifica') renderClassifica();
+  }
   updateFifaLiveStatusUI();
 
   if (manuale) {
@@ -2375,7 +2448,6 @@ function renderVisibilitaAdmin() {
 }
 
 async function toggleVisibilita(gKey, stato) {
-  // Converte stringa 'true'/'false' in booleano reale
   const statoBoolean = stato === true || stato === 'true';
   try {
     await fbPatch('/visibilita', { [gKey]: statoBoolean });
@@ -2384,8 +2456,32 @@ async function toggleVisibilita(gKey, stato) {
     const msg = statoBoolean ? '✅ Pronostici giornata visibili a tutti!' : '🔒 Pronostici nascosti';
     document.getElementById('visibilita-msg').innerHTML = '<div class="msg ' + (statoBoolean ? 'msg-ok' : 'msg-info') + '">' + msg + '</div>';
     setTimeout(() => document.getElementById('visibilita-msg').innerHTML = '', 3000);
+    // Invia notifica automatica quando si apre una nuova giornata
+    if (statoBoolean) {
+      const gNum = gKey.replace('g','');
+      inviaNotificaPush(
+        'Giornata ' + gNum + ' aperta!',
+        'Inserisci i tuoi pronostici per la Giornata ' + gNum + '. Apri l\'app!'
+      );
+    }
   } catch(e) {
     document.getElementById('visibilita-msg').innerHTML = '<div class="msg msg-err">❌ Errore</div>';
+  }
+}
+
+async function inviaNotificaManuale() {
+  const titolo = document.getElementById('notif-titolo').value.trim();
+  const testo = document.getElementById('notif-testo').value.trim();
+  const msg = document.getElementById('notif-msg');
+  if (!titolo || !testo) { msg.innerHTML = '<div class="msg msg-err">Inserisci titolo e messaggio</div>'; return; }
+  try {
+    await inviaNotificaPush(titolo, testo);
+    msg.innerHTML = '<div class="msg msg-ok">✅ Notifica inviata!</div>';
+    document.getElementById('notif-titolo').value = '';
+    document.getElementById('notif-testo').value = '';
+    setTimeout(() => msg.innerHTML = '', 3000);
+  } catch(e) {
+    msg.innerHTML = '<div class="msg msg-err">❌ Errore invio</div>';
   }
 }
 
@@ -2920,8 +3016,259 @@ function adminTab(id) {
   if (id==='knockout-admin') renderKoAdmin();
   if (id==='calendario-admin') renderCalAdminPreview();
   if (id==='visibilita-admin') renderVisibilitaAdmin();
+  // notifiche-admin non richiede init
   if (id==='fifa-live-admin') renderFifaLiveAdmin();
   // stampa-admin non richiede inizializzazione
+}
+
+// ══════════════════════════════════════════════════
+// MODALITÀ OFFLINE
+// ══════════════════════════════════════════════════
+
+function initOfflineDetection() {
+  const banner = document.getElementById('offline-banner');
+  const updateStatus = () => {
+    if (!navigator.onLine) {
+      banner.style.display = 'block';
+      // Prova a caricare dalla cache se disponibile
+      loadFromCache();
+    } else {
+      banner.style.display = 'none';
+    }
+  };
+  window.addEventListener('online', updateStatus);
+  window.addEventListener('offline', updateStatus);
+  updateStatus();
+}
+
+function saveToCache() {
+  try {
+    localStorage.setItem('m26_cache_classifica', JSON.stringify({ players, risultati, pronostici, calendario, selezione, config, ts: Date.now() }));
+  } catch(e) {}
+}
+
+function loadFromCache() {
+  try {
+    const raw = localStorage.getItem('m26_cache_classifica');
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (cached.players) players = cached.players;
+    if (cached.risultati) risultati = cached.risultati;
+    if (cached.pronostici) pronostici = cached.pronostici;
+    if (cached.calendario) calendario = cached.calendario;
+    if (cached.selezione) selezione = cached.selezione;
+    if (cached.config) config = cached.config;
+    const age = Math.round((Date.now() - cached.ts) / 60000);
+    document.getElementById('offline-banner').textContent = '📡 Modalità offline — dati di ' + age + ' minuti fa';
+    renderClassifica();
+    return true;
+  } catch(e) { return false; }
+}
+
+// ══════════════════════════════════════════════════
+// COUNTDOWN PROSSIMA PARTITA
+// ══════════════════════════════════════════════════
+
+let countdownTimer = null;
+
+// Date reali partite Mondiale 2026 (UTC) per le partite selezionate
+// L'app recupera la data dalla stringa 'data' nella partita (es. "21 Giu")
+// e la combina con l'orario tipico del Mondiale (18:00 ora italiana = 16:00 UTC)
+const MESE_MAP = {
+  'gen':0,'feb':1,'mar':2,'apr':3,'mag':4,'giu':5,
+  'lug':6,'ago':7,'set':8,'ott':9,'nov':10,'dic':11,
+  'jan':0,'feb':1,'mar':2,'apr':3,'may':4,'jun':5,
+  'jul':6,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11
+};
+
+function parsaDataPartita(dataStr) {
+  // Cerca nelle partite FIFA dell'API la data esatta
+  // Fallback: usa la stringa "21 Giu" e assume ora 18:00 CET (16:00 UTC)
+  if (!dataStr) return null;
+  const parts = dataStr.trim().split(' ');
+  if (parts.length < 2) return null;
+  const giorno = parseInt(parts[0]);
+  const meseStr = parts[1].toLowerCase().substring(0, 3);
+  const mese = MESE_MAP[meseStr];
+  if (isNaN(giorno) || mese === undefined) return null;
+  // Anno 2026, ora di default 18:00 CET = 16:00 UTC
+  return new Date(Date.UTC(2026, mese, giorno, 16, 0, 0));
+}
+
+function trovaProssimaPartita() {
+  const ora = Date.now();
+  let prossima = null;
+  let prossimaData = null;
+
+  const giornateReali = Object.keys(partite);
+  for (const gKey of giornateReali) {
+    const matchesG = partite[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    const risG = risultati[gKey] || {};
+    const midsToCheck = selMids.length ? selMids : Object.keys(matchesG);
+
+    for (const mid of midsToCheck) {
+      const m = matchesG[mid];
+      const r = risG[mid];
+      if (!m) continue;
+      // Salta partite già con risultato definitivo
+      if (r && r.h != null && r.a != null && r.manuale) continue;
+      const data = parsaDataPartita(m.data);
+      if (!data) continue;
+      if (data.getTime() > ora) {
+        if (!prossimaData || data.getTime() < prossimaData.getTime()) {
+          prossimaData = data;
+          prossima = { ...m, gKey, mid };
+        }
+      }
+    }
+  }
+  return { partita: prossima, data: prossimaData };
+}
+
+function renderCountdown() {
+  const el = document.getElementById('countdown-container');
+  if (!el) return;
+  const { partita, data } = trovaProssimaPartita();
+  if (!partita || !data) {
+    el.innerHTML = '';
+    return;
+  }
+  const diff = data.getTime() - Date.now();
+  if (diff <= 0) {
+    el.innerHTML = '';
+    return;
+  }
+  const giorni = Math.floor(diff / 86400000);
+  const ore = Math.floor((diff % 86400000) / 3600000);
+  const minuti = Math.floor((diff % 3600000) / 60000);
+  const secondi = Math.floor((diff % 60000) / 1000);
+
+  el.innerHTML = '<div class="countdown-card">'
+    + '<div class="countdown-label">⏱ Prossima partita</div>'
+    + '<div class="countdown-match">' + partita.h + ' vs ' + partita.a + ' · ' + (partita.data||'') + '</div>'
+    + '<div class="countdown-timer">'
+    + (giorni > 0 ? '<div class="countdown-unit"><div class="countdown-num">' + giorni + '</div><div class="countdown-unit-label">giorni</div></div><div class="countdown-sep">:</div>' : '')
+    + '<div class="countdown-unit"><div class="countdown-num">' + String(ore).padStart(2,'0') + '</div><div class="countdown-unit-label">ore</div></div>'
+    + '<div class="countdown-sep">:</div>'
+    + '<div class="countdown-unit"><div class="countdown-num">' + String(minuti).padStart(2,'0') + '</div><div class="countdown-unit-label">min</div></div>'
+    + '<div class="countdown-sep">:</div>'
+    + '<div class="countdown-unit"><div class="countdown-num">' + String(secondi).padStart(2,'0') + '</div><div class="countdown-unit-label">sec</div></div>'
+    + '</div></div>';
+}
+
+function avviaCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  renderCountdown();
+  countdownTimer = setInterval(renderCountdown, 1000);
+}
+
+// ══════════════════════════════════════════════════
+// NOTIFICHE PUSH (Firebase Cloud Messaging)
+// ══════════════════════════════════════════════════
+
+const FCM_VAPID_KEY = 'BMpuFQTmH3-0uw7ztHuuhy_0ybUeR8KQCUF8kjSTq2ZcOoxOWg5N_YU7zjSR_N05gLhTECQVZabY83xvm4-AQRI'; // Da Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
+let fcmToken = null;
+
+async function initNotifiche() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  try {
+    // Registra service worker
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    console.log('Service Worker registrato');
+
+    // Chiedi permesso notifiche
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      console.log('Notifiche non autorizzate dall\'utente');
+      return;
+    }
+
+    // Carica Firebase Messaging SDK dinamicamente
+    if (typeof firebase === 'undefined') {
+      await loadScript('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+      firebase.initializeApp({
+        apiKey: "AIzaSyCRjoyrdD1ML8g0FfX0ZD9rG_nScqsnolQ",
+        authDomain: "mondiale2026-prono.firebaseapp.com",
+        projectId: "mondiale2026-prono",
+        storageBucket: "mondiale2026-prono.firebasestorage.app",
+        messagingSenderId: "426218656526",
+        appId: "1:426218656526:web:af2c67782e007d3f9cfd5f"
+      });
+    }
+
+    const messaging = firebase.messaging();
+    fcmToken = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+    if (fcmToken) {
+      // Salva il token su Firebase associato all'utente
+      await fbSet('/fcm_tokens/' + currentUser.replace(/[.#$/[\]]/g,'_'), fcmToken);
+      console.log('FCM Token salvato per', currentUser);
+    }
+
+    // Gestisce notifiche in foreground (app aperta)
+    messaging.onMessage(payload => {
+      const { title, body } = payload.notification || {};
+      mostraNotificaInApp(title || '🌍 Mondiale 2026', body || 'Aggiornamento disponibile');
+    });
+
+  } catch(e) {
+    console.warn('Errore init notifiche:', e);
+  }
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+function mostraNotificaInApp(titolo, testo) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:9000;'
+    + 'background:var(--verde3);border:1px solid var(--border2);border-radius:10px;'
+    + 'padding:12px 18px;font-family:Oswald;font-size:0.82rem;letter-spacing:0.1em;'
+    + 'color:var(--oro2);max-width:320px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.5);'
+    + 'animation:fadeIn 0.3s ease';
+  el.innerHTML = '<div style="font-weight:600;margin-bottom:4px">' + titolo + '</div>'
+    + '<div style="color:var(--text2);font-size:0.75rem">' + testo + '</div>';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// Invia notifica push a tutti i giocatori (solo admin)
+async function inviaNotificaPush(titolo, testo) {
+  // Le notifiche push si inviano tramite Firebase Cloud Messaging tramite HTTP
+  // Non è possibile farlo direttamente dal browser (richiede server-side o Firebase Admin SDK)
+  // Usiamo il workaround: scriviamo una notifica su Firebase, i client la leggono via polling
+  try {
+    await fbSet('/notifiche/ultima', {
+      titolo, testo,
+      ts: Date.now(),
+      da: currentUser
+    });
+  } catch(e) {}
+}
+
+// Polling notifiche (controlla se c'è una nuova notifica su Firebase ogni 30s)
+let ultimaNotificaTs = 0;
+async function checkNotifiche() {
+  try {
+    const n = await fbGet('/notifiche/ultima');
+    if (n && n.ts && n.ts > ultimaNotificaTs && n.ts > (Date.now() - 300000)) {
+      ultimaNotificaTs = n.ts;
+      mostraNotificaInApp(n.titolo || '🌍 Mondiale 2026', n.testo || '');
+      // Notifica nativa se app in background
+      if (Notification.permission === 'granted' && document.hidden) {
+        new Notification(n.titolo || '🌍 Mondiale 2026', {
+          body: n.testo, icon: '/icon-192.png'
+        });
+      }
+    }
+  } catch(e) {}
 }
 
 // ══════════════════════════════════════════════════
