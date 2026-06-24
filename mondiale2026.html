@@ -694,6 +694,7 @@
         <button class="btn btn-sm" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiSospetti()">🗑️ Pulisci risultati 0-0 sospetti</button>
         <button class="btn btn-sm mt8" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4)" onclick="pulisciRisultatiNonSelezionati()">🗑️ Pulisci risultati su partite non selezionate</button>
         <button class="btn btn-sm mt8" style="background:rgba(192,57,43,0.35);color:#fff;border:1px solid rgba(192,57,43,0.6)" onclick="resetCompletoRisultati()">⚠️ Reset rapido: rimuovi TUTTI i risultati fuori dalle 10 selezionate (tutte le giornate)</button>
+        <button class="btn btn-gold btn-sm mt8" onclick="fixGiornata2()">🔧 Fix Giornata 2: cancella falsi 0-0 + gira pronostici Panama-Croazia</button>
         <div id="reset-msg" class="mt8"></div>
         <div id="pulizia-msg" class="mt8"></div>
         <hr class="divider">
@@ -836,7 +837,7 @@ const PARTITE_MONDIALE = {
     m21:{h:'Portogallo',a:'Uzbekistan',gruppo:'Gruppo K',data:'23 Giu'},
     m22:{h:'Colombia',a:'R.D. del Congo',gruppo:'Gruppo K',data:'23 Giu'},
     m23:{h:'Inghilterra',a:'Ghana',gruppo:'Gruppo L',data:'22 Giu'},
-    m24:{h:'Croazia',a:'Panama',gruppo:'Gruppo L',data:'23 Giu'}
+    m24:{h:'Panama',a:'Croazia',gruppo:'Gruppo L',data:'23 Giu'}
   },
   g3: {
     m01:{h:'Sudafrica',a:'Corea del Sud',gruppo:'Gruppo A',data:'25 Giu'},
@@ -1379,6 +1380,63 @@ async function pulisciRisultatiNonSelezionati() {
   }
 }
 
+async function fixGiornata2() {
+  if (!confirm('Questa operazione:\n1. Cancella i falsi 0-0 da Portogallo-Uzbekistan e Inghilterra-Ghana (g2)\n2. Gira i pronostici di Panama-Croazia (erano inseriti come Croazia-Panama)\n\nProcedere?')) return;
+
+  const el = document.getElementById('reset-msg');
+  el.innerHTML = '<div class="msg msg-info">Operazione in corso...</div>';
+
+  try {
+    // Step 1: Cancella falsi 0-0 dalla g2 per le partite non ancora giocate
+    // Le partite selezionate senza risultato reale vanno pulite
+    const risG2 = await fbGet('/risultati/g2') || {};
+    const parG2 = await fbGet('/partite/g2') || {};
+    const selG2 = await fbGet('/selezione/g2') || {};
+    const selMids = Object.keys(selG2).filter(k => selG2[k]);
+
+    // Trova i mid delle partite non ancora giocate (0-0 fittizi)
+    // Le partite future: Portogallo-Uzbekistan, Inghilterra-Ghana, Panama-Croazia
+    const partiteFuture = ['Portogallo', 'Uzbekistan', 'Inghilterra', 'Ghana', 'Panama', 'Croazia'];
+    let cancellati = 0;
+    for (const mid of selMids) {
+      const m = parG2[mid] || {};
+      const r = risG2[mid];
+      if (!r || r.h == null || r.a == null) continue;
+      // Se è una partita futura con risultato 0-0, cancella
+      const isFutura = partiteFuture.some(sq => m.h === sq || m.a === sq);
+      if (isFutura && r.h == 0 && r.a == 0 && !r.manuale) {
+        await fbDelete('/risultati/g2/' + mid);
+        if (risultati['g2']) delete risultati['g2'][mid];
+        cancellati++;
+      }
+    }
+
+    // Step 2: Gira i pronostici di Panama-Croazia (mid m24 in g2)
+    const proG2 = await fbGet('/pronostici/g2') || {};
+    let girati = 0;
+    for (const giocatore of Object.keys(proG2)) {
+      const pro = proG2[giocatore] || {};
+      const proM24 = pro['m24'];
+      if (proM24 && proM24.h != null && proM24.a != null) {
+        // Scambia h e a
+        const nuovoPro = { h: proM24.a, a: proM24.h };
+        await fbSet('/pronostici/g2/' + giocatore + '/m24', nuovoPro);
+        girati++;
+      }
+    }
+
+    // Ricarica dati
+    const [risFresh, proFresh] = await Promise.all([fbGet('/risultati'), fbGet('/pronostici')]);
+    risultati = risFresh || {};
+    pronostici = proFresh || {};
+
+    el.innerHTML = '<div class="msg msg-ok">✅ Fatto! Cancellati ' + cancellati + ' falsi 0-0. Girati ' + girati + ' pronostici di Panama-Croazia.</div>';
+    renderClassifica();
+  } catch(e) {
+    el.innerHTML = '<div class="msg msg-err">❌ Errore: ' + e.message + '</div>';
+  }
+}
+
 async function resetCompletoRisultati() {
   const [risFresh, parFresh, selFresh] = await Promise.all([
     fbGet('/risultati'), fbGet('/partite'), fbGet('/selezione')
@@ -1824,8 +1882,13 @@ function renderRisultati() {
   mids.forEach(mid=>{
     const m=matchesG[mid]; if(!m) return;
     const r=ris[mid]||{};
-    const hVal=r.h!=null?r.h:'–'; const aVal=r.a!=null?r.a:'–';
-    const done=r.h!=null&&r.a!=null;
+    // Controlla se la partita è ancora futura e il risultato 0-0 è fittizio
+    const dataPartita = parsaDataPartita(m.data);
+    const eFutura = dataPartita && dataPartita.getTime() > Date.now();
+    const risultatoFittizio = r.h==0 && r.a==0 && !r.manuale && eFutura;
+    const done = r.h!=null && r.a!=null && !risultatoFittizio;
+    const hVal = done ? r.h : '–';
+    const aVal = done ? r.a : '–';
     html+=`<div class="ris-match">
       <div class="ris-team">${m.h||'Casa'}</div>
       <div class="ris-score-box">
