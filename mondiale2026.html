@@ -1068,7 +1068,7 @@ async function fetchRisultatiFIFA() {
               // Usiamo UTC-5 (CDT) come approssimazione — errore max 1-2 ore
               const dateUTC = new Date(Date.UTC(
                 parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2]),
-                parseInt(m[4]) + 5, parseInt(m[5]) // CDT = UTC-5 → +5 per avere UTC
+                parseInt(m[4]) + 6, parseInt(m[5]) // MDT = UTC-6 → +6 per avere UTC
               ));
               fifaDateCache[h + '_' + a] = dateUTC;
             }
