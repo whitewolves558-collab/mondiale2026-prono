@@ -997,7 +997,8 @@ const WC_API_PROXY = 'https://corsproxy.io/?url=' + encodeURIComponent(WC_API_UR
 let wcAutoUpdateTimer = null;
 let fifaUpdateCount = 0;
 let fifaLastCheck = null;
-const WC_UPDATE_INTERVAL = 60000; // 60 secondi
+let fifaDateCache = {}; // { "homeNorm_awayNorm": Date } orari reali dall'API
+const WC_UPDATE_INTERVAL = 60000;
 
 // Mappa nomi italiani/app -> nomi inglesi usati dall'API (estendibile)
 const WC_NAME_MAP = {
@@ -1041,8 +1042,7 @@ async function fetchRisultatiFIFA() {
       const games = data.games || data.matches || data.data || data;
       fifaLastError = null;
       if (Array.isArray(games) && games.length) {
-        fifaLastRawSample = games[0]; // default: prima partita
-        // Cerca anche Spain o Saudi Arabia per il debug
+        fifaLastRawSample = games[0];
         const sampleSpagna = games.find(g =>
           (g.home_team_name_en||'').toLowerCase().includes('spain') ||
           (g.away_team_name_en||'').toLowerCase().includes('spain') ||
@@ -1050,6 +1050,30 @@ async function fetchRisultatiFIFA() {
           (g.away_team_name_en||'').toLowerCase().includes('saudi')
         );
         if (sampleSpagna) fifaLastRawSample = sampleSpagna;
+
+        // Salva gli orari reali delle partite nella cache per il countdown
+        // local_date formato: "06/26/2026 21:00" (ora locale USA/Canada, CET-6/7)
+        // Converti in UTC: ora locale + 6 ore (CDT) o + 7 ore (MDT) a seconda della città
+        // Approssimazione: +6 ore (la maggior parte delle partite è in CDT)
+        games.forEach(g => {
+          const h = normalizzaNomeSquadra(g.home_team_name_en);
+          const a = normalizzaNomeSquadra(g.away_team_name_en);
+          const localDate = g.local_date || '';
+          if (h && a && localDate) {
+            // Parsa "MM/DD/YYYY HH:MM"
+            const m = localDate.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+            if (m) {
+              // Ora locale USA (CDT = UTC-5, MDT = UTC-6, PDT = UTC-7)
+              // Le partite del Mondiale 2026 si giocano nelle fasce 12:00-21:00 locali USA
+              // Usiamo UTC-5 (CDT) come approssimazione — errore max 1-2 ore
+              const dateUTC = new Date(Date.UTC(
+                parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2]),
+                parseInt(m[4]) + 5, parseInt(m[5]) // CDT = UTC-5 → +5 per avere UTC
+              ));
+              fifaDateCache[h + '_' + a] = dateUTC;
+            }
+          }
+        });
       }
       return games;
     } catch(e) {
@@ -1850,7 +1874,7 @@ function renderRisultati() {
     const m=matchesG[mid]; if(!m) return;
     const r=ris[mid]||{};
     // Controlla se la partita è ancora futura e il risultato 0-0 è fittizio
-    const dataPartita = parsaDataPartita(m.data);
+    const dataPartita = parsaDataPartita(m.data, normalizzaNomeSquadra(m.h), normalizzaNomeSquadra(m.a));
     const eFutura = dataPartita && dataPartita.getTime() > Date.now();
     const risultatoFittizio = r.h==0 && r.a==0 && !r.manuale && eFutura;
     const done = r.h!=null && r.a!=null && !risultatoFittizio;
@@ -3111,9 +3135,13 @@ const MESE_MAP = {
   'jul':6,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11
 };
 
-function parsaDataPartita(dataStr) {
-  // Cerca nelle partite FIFA dell'API la data esatta
-  // Fallback: usa la stringa "21 Giu" e assume ora 18:00 CET (16:00 UTC)
+function parsaDataPartita(dataStr, homeNorm, awayNorm) {
+  // Prima prova la cache con orari reali dall'API FIFA
+  if (homeNorm && awayNorm) {
+    const cached = fifaDateCache[homeNorm + '_' + awayNorm];
+    if (cached) return cached;
+  }
+  // Fallback: usa la stringa "21 Giu" con ora di default 21:00 CET = 19:00 UTC
   if (!dataStr) return null;
   const parts = dataStr.trim().split(' ');
   if (parts.length < 2) return null;
@@ -3121,8 +3149,8 @@ function parsaDataPartita(dataStr) {
   const meseStr = parts[1].toLowerCase().substring(0, 3);
   const mese = MESE_MAP[meseStr];
   if (isNaN(giorno) || mese === undefined) return null;
-  // Anno 2026, ora di default 18:00 CET = 16:00 UTC
-  return new Date(Date.UTC(2026, mese, giorno, 16, 0, 0));
+  // Fallback: 21:00 CET = 19:00 UTC (orario tipico serale Mondiale)
+  return new Date(Date.UTC(2026, mese, giorno, 19, 0, 0));
 }
 
 function trovaProssimaPartita() {
@@ -3147,7 +3175,7 @@ function trovaProssimaPartita() {
       if (!m) continue;
       // Salta partite che hanno GIÀ un risultato (automatico o manuale)
       if (r && r.h != null && r.a != null) continue;
-      const data = parsaDataPartita(m.data);
+      const data = parsaDataPartita(m.data, normalizzaNomeSquadra(m.h), normalizzaNomeSquadra(m.a));
       if (!data) continue;
       if (data.getTime() > ora) {
         if (!prossimaData || data.getTime() < prossimaData.getTime()) {
