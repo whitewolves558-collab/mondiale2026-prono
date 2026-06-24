@@ -1381,57 +1381,24 @@ async function pulisciRisultatiNonSelezionati() {
 }
 
 async function fixGiornata2() {
-  if (!confirm('Questa operazione:\n1. Cancella i falsi 0-0 da Portogallo-Uzbekistan e Inghilterra-Ghana (g2)\n2. Gira i pronostici di Panama-Croazia (erano inseriti come Croazia-Panama)\n\nProcedere?')) return;
+  if (!confirm('Questa operazione gira i pronostici di Panama-Croazia (erano inseriti come Croazia-Panama) per tutti i giocatori.\n\nProcedere?')) return;
 
   const el = document.getElementById('reset-msg');
   el.innerHTML = '<div class="msg msg-info">Operazione in corso...</div>';
 
   try {
-    // Step 1: Cancella falsi 0-0 dalla g2 per le partite non ancora giocate
-    // Le partite selezionate senza risultato reale vanno pulite
-    const risG2 = await fbGet('/risultati/g2') || {};
-    const parG2 = await fbGet('/partite/g2') || {};
-    const selG2 = await fbGet('/selezione/g2') || {};
-    const selMids = Object.keys(selG2).filter(k => selG2[k]);
-
-    // Trova i mid delle partite non ancora giocate (0-0 fittizi)
-    // Le partite future: Portogallo-Uzbekistan, Inghilterra-Ghana, Panama-Croazia
-    const partiteFuture = ['Portogallo', 'Uzbekistan', 'Inghilterra', 'Ghana', 'Panama', 'Croazia'];
-    let cancellati = 0;
-    for (const mid of selMids) {
-      const m = parG2[mid] || {};
-      const r = risG2[mid];
-      if (!r || r.h == null || r.a == null) continue;
-      // Se è una partita futura con risultato 0-0, cancella
-      const isFutura = partiteFuture.some(sq => m.h === sq || m.a === sq);
-      if (isFutura && r.h == 0 && r.a == 0 && !r.manuale) {
-        await fbDelete('/risultati/g2/' + mid);
-        if (risultati['g2']) delete risultati['g2'][mid];
-        cancellati++;
-      }
-    }
-
-    // Step 2: Gira i pronostici di Panama-Croazia (mid m24 in g2)
     const proG2 = await fbGet('/pronostici/g2') || {};
     let girati = 0;
     for (const giocatore of Object.keys(proG2)) {
       const pro = proG2[giocatore] || {};
       const proM24 = pro['m24'];
       if (proM24 && proM24.h != null && proM24.a != null) {
-        // Scambia h e a
-        const nuovoPro = { h: proM24.a, a: proM24.h };
-        await fbSet('/pronostici/g2/' + giocatore + '/m24', nuovoPro);
+        await fbSet('/pronostici/g2/' + giocatore + '/m24', { h: proM24.a, a: proM24.h });
         girati++;
       }
     }
-
-    // Ricarica dati
-    const [risFresh, proFresh] = await Promise.all([fbGet('/risultati'), fbGet('/pronostici')]);
-    risultati = risFresh || {};
-    pronostici = proFresh || {};
-
-    el.innerHTML = '<div class="msg msg-ok">✅ Fatto! Cancellati ' + cancellati + ' falsi 0-0. Girati ' + girati + ' pronostici di Panama-Croazia.</div>';
-    renderClassifica();
+    pronostici = await fbGet('/pronostici') || {};
+    el.innerHTML = '<div class="msg msg-ok">✅ Girati ' + girati + ' pronostici di Panama-Croazia.</div>';
   } catch(e) {
     el.innerHTML = '<div class="msg msg-err">❌ Errore: ' + e.message + '</div>';
   }
