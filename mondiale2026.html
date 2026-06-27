@@ -339,6 +339,51 @@
   /* ── LOADING ── */
   .spinner { display:inline-block; width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--oro); border-radius:50%; animation:spin 0.8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── PRONOSTICI EXTRA (quarti+) ── */
+  .extra-prono-box {
+    margin-top:12px; padding:10px 12px;
+    background:rgba(201,168,76,0.06);
+    border:1px solid var(--border);
+    border-radius:8px;
+  }
+  .extra-prono-title {
+    font-family:'Cinzel'; font-size:0.72rem; color:var(--oro);
+    letter-spacing:0.12em; text-transform:uppercase;
+    margin-bottom:10px; padding-bottom:6px;
+    border-bottom:1px solid var(--border);
+  }
+  .extra-field { margin-bottom:10px; }
+  .extra-label {
+    font-family:'Oswald'; font-size:0.68rem; letter-spacing:0.15em;
+    color:var(--grigio); text-transform:uppercase; margin-bottom:4px; display:block;
+  }
+  .extra-score-row { display:flex; align-items:center; gap:8px; }
+  .extra-score-row input {
+    width:40px; text-align:center;
+    background:rgba(201,168,76,0.08); border:1px solid var(--border2);
+    border-radius:6px; padding:7px 2px; color:var(--oro2);
+    font-family:'Oswald'; font-size:1rem; font-weight:700; outline:none;
+  }
+  .extra-select {
+    width:100%; background:rgba(201,168,76,0.06);
+    border:1px solid var(--border2); border-radius:6px;
+    padding:8px 10px; color:var(--text);
+    font-family:'Oswald'; font-size:0.82rem; outline:none;
+  }
+  .extra-select option { background:var(--verde); }
+  .extra-text-input {
+    width:100%; background:rgba(201,168,76,0.06);
+    border:1px solid var(--border2); border-radius:6px;
+    padding:8px 10px; color:var(--text);
+    font-family:'Oswald'; font-size:0.82rem; outline:none;
+  }
+  .extra-badge {
+    font-family:'Cinzel'; font-size:0.7rem; letter-spacing:0.1em;
+    padding:2px 7px; border-radius:4px; display:inline-block; margin-left:6px;
+  }
+  .extra-badge-ok { background:rgba(26,122,66,0.3); color:#4ade80; border:1px solid rgba(74,222,128,0.3); }
+  .extra-badge-err { background:rgba(192,57,43,0.2); color:#f87171; border:1px solid rgba(248,113,113,0.3); }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
   .loading-overlay { text-align:center; padding:40px; color:var(--grigio); font-family:'Oswald'; letter-spacing:0.2em; }
 
@@ -583,6 +628,7 @@
         <button class="inner-tab active" onclick="adminTab('setup')">Setup</button>
         <button class="inner-tab" onclick="adminTab('giocatori')">Giocatori</button>
         <button class="inner-tab" onclick="adminTab('calendario-admin')">Calendario</button>
+        <button class="inner-tab" onclick="adminTab('countdown-admin')">⏱ Countdown</button>
         <button class="inner-tab" onclick="adminTab('partite')">Partite</button>
         <button class="inner-tab" onclick="adminTab('risultati-admin')">Risultati</button>
         <button class="inner-tab" onclick="adminTab('visibilita-admin')">👁 Visibilità</button>
@@ -636,6 +682,29 @@
         <div id="cal-admin-msg" class="mt8"></div>
         <button class="btn btn-gold mt8" onclick="generaCalendario()">🎲 Genera Calendario</button>
         <button class="btn btn-outline btn-sm mt8" style="margin-left:8px" onclick="renderCalAdminPreview()">👁 Visualizza</button>
+      </div>
+
+      <div id="admin-countdown-admin" class="admin-section" style="display:none">
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;line-height:1.5">
+          Imposta il conto alla rovescia mostrato nella home. Usa l'ora italiana (CET/CEST).
+        </div>
+        <div class="input-group">
+          <label>Data e ora italiana</label>
+          <input type="datetime-local" id="cd-datetime" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Oswald;font-size:0.9rem;width:100%;outline:none">
+        </div>
+        <div class="input-group">
+          <label>Messaggio (es. "Ottavi di Finale" o lascia vuoto per usare la partita)</label>
+          <input type="text" id="cd-messaggio" placeholder="es. Quarti di Finale · Germania vs Spagna">
+        </div>
+        <div class="input-group">
+          <label>Oppure seleziona partita dalle selezionate</label>
+          <select id="cd-partita" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Oswald;font-size:0.85rem;width:100%;outline:none">
+            <option value="">— Nessuna partita (usa il messaggio sopra) —</option>
+          </select>
+        </div>
+        <div id="cd-msg" class="mt8"></div>
+        <button class="btn btn-gold mt8" onclick="salvaCountdownAdmin()">💾 Imposta Countdown</button>
+        <button class="btn btn-danger btn-sm mt8" style="margin-left:8px" onclick="cancellaCountdown()">✕ Rimuovi countdown</button>
       </div>
 
       <div id="admin-partite" class="admin-section" style="display:none">
@@ -773,6 +842,7 @@ let koData = {};
 let selezione = {};
 let calendario = {}; // sfide tra giocatori per giornata
 let visibilita = {}; // {g1: true/false} - admin controlla quando mostrare pronostici
+let countdownData = null; // { ts: timestamp_UTC, label: "testo" }
 
 let currentGiornata = 1;
 let currentGiornataRis = 1;
@@ -1554,10 +1624,11 @@ function fermaAggiornamentoAutomatico() {
 // ══════════════════════════════════════════════════
 async function loadAll() {
   try {
-    const [cfg, pl, par, ris, pro, ko, sel, cal, vis] = await Promise.all([
+    const [cfg, pl, par, ris, pro, ko, sel, cal, vis, cd] = await Promise.all([
       fbGet('/config'), fbGet('/players'), fbGet('/partite'),
       fbGet('/risultati'), fbGet('/pronostici'), fbGet('/knockout'),
-      fbGet('/selezione'), fbGet('/calendario'), fbGet('/visibilita')
+      fbGet('/selezione'), fbGet('/calendario'), fbGet('/visibilita'),
+      fbGet('/countdown')
     ]);
     if (cfg) config = cfg;
     players = pl || {};
@@ -1568,6 +1639,7 @@ async function loadAll() {
     selezione = sel || {};
     calendario = cal || {};
     visibilita = vis || {};
+    if (cd) countdownData = cd;
   } catch(e) { console.error('Load error', e); }
 }
 
@@ -1912,14 +1984,18 @@ function renderKnockout() {
   }
 }
 function setKoRound(r) { currentKoRound=r; renderKnockout(); }
+const KO_ROUND_CON_EXTRA = ['quarti','semifinali','finale'];
+const FASCE_PRIMO_GOL = ['0-15','16-30','31-45','46-60','61-75','76-90'];
+
 function renderKoRound() {
   const matches=((koData||{})[currentKoRound])||{};
   const ris=((koData||{})[currentKoRound+'_ris'])||{};
   const mio=(((pronostici||{})['ko_'+currentKoRound])||{})[currentUser]||{};
   const hasRis=Object.keys(ris).length>0;
   const mids=Object.keys(matches);
+  const conExtra = KO_ROUND_CON_EXTRA.includes(currentKoRound);
   if (!mids.length) { document.getElementById('ko-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita configurata</div>'; return; }
-  let html=`<div class="bracket-round"><div class="bracket-round-title">${KO_LABELS[currentKoRound]}</div>`;
+  let html='<div class="bracket-round"><div class="bracket-round-title">'+KO_LABELS[currentKoRound]+'</div>';
   mids.forEach(mid=>{
     const m=matches[mid]; const r=ris[mid]||{}; const mpr=mio[mid]||{};
     let badge='';
@@ -1927,36 +2003,119 @@ function renderKoRound() {
       if (parseInt(mpr.h)===parseInt(r.h)&&parseInt(mpr.a)===parseInt(r.a)) badge='<span class="prono-result prono-exact">+3</span>';
       else { const sr=r.h>r.a?'1':(r.h===r.a?'X':'2'); const sm=mpr.h>mpr.a?'1':(mpr.h===mpr.a?'X':'2'); badge=sr===sm?'<span class="prono-result prono-sign">+1</span>':'<span class="prono-result prono-wrong">0</span>'; }
     }
-    const rVal=r.h!=null?`${r.h}–${r.a}`:'?–?';
-    html+=`<div class="bracket-match">
-      <div class="bm-player">${m.h||'TBD'}</div>
-      <div class="bm-score">
-        <input type="number" min="0" max="99" id="kph_${mid}" value="${mpr.h!=null?mpr.h:''}" ${hasRis?'disabled':''} oninput="autoAdvance(this,'kpa_${mid}')" onkeydown="handleBackspace(event,this,null)">
-        <span style="color:var(--grigio)">–</span>
-        <input type="number" min="0" max="99" id="kpa_${mid}" value="${mpr.a!=null?mpr.a:''}" ${hasRis?'disabled':''} oninput="autoAdvance(this,null)" onkeydown="handleBackspace(event,this,'kph_${mid}')">
-        ${r.h!=null?`<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:4px">(${rVal})</span>`:''}
-      </div>
-      <div class="bm-player right">${m.a||'TBD'}</div>
-    </div>${badge?'<div style="text-align:center;margin-bottom:8px">'+badge+'</div>':''}`;
+    const rVal=r.h!=null?r.h+'–'+r.a:'?–?';
+    html+='<div class="bracket-match">'
+      +'<div class="bm-player">'+(m.h||'TBD')+'</div>'
+      +'<div class="bm-score">'
+      +'<input type="number" min="0" max="99" id="kph_'+mid+'" value="'+(mpr.h!=null?mpr.h:'')+'" '+(hasRis?'disabled':'')+' oninput="autoAdvance(this,\'kpa_'+mid+'\')" onkeydown="handleBackspace(event,this,null)">'
+      +'<span style="color:var(--grigio)">–</span>'
+      +'<input type="number" min="0" max="99" id="kpa_'+mid+'" value="'+(mpr.a!=null?mpr.a:'')+'" '+(hasRis?'disabled':'')+' oninput="autoAdvance(this,null)" onkeydown="handleBackspace(event,this,\'kph_'+mid+'\')">'
+      +(r.h!=null?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:4px">('+rVal+')</span>':'')
+      +'</div>'
+      +'<div class="bm-player right">'+(m.a||'TBD')+'</div>'
+      +'</div>'
+      +(badge?'<div style="text-align:center;margin-bottom:8px">'+badge+'</div>':'');
+
+    // Pronostici extra per quarti/semi/finale
+    if (conExtra) {
+      const ex = mpr.extra||{};
+      const exRis = r.extra||{};
+      const lockedExtra = hasRis;
+      // Calcola badge extra
+      const badgeExtra = (k, val, risVal, pts) => {
+        if (!hasRis || !risVal || !val) return '';
+        return val===risVal
+          ? '<span class="extra-badge extra-badge-ok">+'+pts+'</span>'
+          : '<span class="extra-badge extra-badge-err">✗</span>';
+      };
+      html += '<div class="extra-prono-box">'
+        +'<div class="extra-prono-title">⭐ Pronostici Extra</div>'
+        // Risultato esatto 1° tempo
+        +'<div class="extra-field"><span class="extra-label">Risultato esatto 1° tempo (+3)</span>'
+        +'<div class="extra-score-row">'
+        +'<input type="number" min="0" max="20" id="ex_pt1h_'+mid+'" value="'+(ex.pt1h!=null?ex.pt1h:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
+        +'<span style="color:var(--grigio);font-family:Oswald">–</span>'
+        +'<input type="number" min="0" max="20" id="ex_pt1a_'+mid+'" value="'+(ex.pt1a!=null?ex.pt1a:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
+        +(exRis.pt1h!=null?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:6px">('+exRis.pt1h+'-'+exRis.pt1a+')</span>':'')
+        +badgeExtra('pt1', (ex.pt1h!=null&&ex.pt1a!=null)?ex.pt1h+'-'+ex.pt1a:null, (exRis.pt1h!=null&&exRis.pt1a!=null)?exRis.pt1h+'-'+exRis.pt1a:null, 3)
+        +'</div></div>'
+        // Squadra che segna per prima
+        +'<div class="extra-field"><span class="extra-label">Squadra che segna per prima (+1)</span>'
+        +'<select id="ex_sqfirst_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
+        +'<option value="">— Seleziona —</option>'
+        +'<option value="'+(m.h||'')+('"'+(ex.sqFirst===(m.h||'')?'selected':''))+'>'+(m.h||'Casa')+'</option>'
+        +'<option value="'+(m.a||'')+('"'+(ex.sqFirst===(m.a||'')?'selected':''))+'>'+(m.a||'Ospite')+'</option>'
+        +'<option value="nessuno"'+(ex.sqFirst==='nessuno'?' selected':'')+'>Nessuno (0-0)</option>'
+        +'</select>'
+        +(exRis.sqFirst?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.sqFirst+')</span>':'')
+        +badgeExtra('sqFirst', ex.sqFirst, exRis.sqFirst, 1)
+        +'</div>'
+        // Marcatore primo gol
+        +'<div class="extra-field"><span class="extra-label">Marcatore primo gol (+1)</span>'
+        +'<input type="text" id="ex_marcatore_'+mid+'" class="extra-text-input" value="'+(ex.marcatore||'')+'" '+(lockedExtra?'disabled':'')+' placeholder="Nome giocatore">'
+        +(exRis.marcatore?'<div style="font-family:Oswald;font-size:0.72rem;color:var(--grigio);margin-top:2px">Ris: '+exRis.marcatore+'</div>':'')
+        +badgeExtra('marcatore', ex.marcatore?ex.marcatore.toLowerCase().trim():null, exRis.marcatore?exRis.marcatore.toLowerCase().trim():null, 1)
+        +'</div>'
+        // Rigori
+        +'<div class="extra-field"><span class="extra-label">Si va ai rigori? (+1)</span>'
+        +'<select id="ex_rigori_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
+        +'<option value="">— Seleziona —</option>'
+        +'<option value="si"'+(ex.rigori==='si'?' selected':'')+'>Sì</option>'
+        +'<option value="no"'+(ex.rigori==='no'?' selected':'')+'>No</option>'
+        +'</select>'
+        +(exRis.rigori?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.rigori+')</span>':'')
+        +badgeExtra('rigori', ex.rigori, exRis.rigori, 1)
+        +'</div>'
+        // Fascia primo gol
+        +'<div class="extra-field"><span class="extra-label">Fascia minuto primo gol (+1)</span>'
+        +'<select id="ex_fascia_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
+        +'<option value="">— Seleziona —</option>'
+        +FASCE_PRIMO_GOL.map(f=>'<option value="'+f+'"'+(ex.fascia===f?' selected':'')+'>'+f+'\'</option>').join('')
+        +'</select>'
+        +(exRis.fascia?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.fascia+'\')</span>':'')
+        +badgeExtra('fascia', ex.fascia, exRis.fascia, 1)
+        +'</div>'
+        +'</div>';
+    }
   });
-  if (!hasRis) html+=`<button class="btn btn-gold btn-block mt8" onclick="saveKoPro()">💾 Salva</button>`;
+  if (!hasRis) html+='<button class="btn btn-gold btn-block mt8" onclick="saveKoPro()">💾 Salva</button>';
   html+='</div>';
   document.getElementById('ko-content').innerHTML=html;
 }
+
 async function saveKoPro() {
   const gKey='ko_'+currentKoRound;
   const matches=((koData||{})[currentKoRound])||{};
+  const conExtra = KO_ROUND_CON_EXTRA.includes(currentKoRound);
   const data={};
   Object.keys(matches).forEach(mid=>{
     const hEl=document.getElementById('kph_'+mid); const aEl=document.getElementById('kpa_'+mid);
-    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') data[mid]={h:parseInt(hEl.value),a:parseInt(aEl.value)};
+    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') {
+      const entry = {h:parseInt(hEl.value),a:parseInt(aEl.value)};
+      if (conExtra) {
+        const pt1h=document.getElementById('ex_pt1h_'+mid)?.value;
+        const pt1a=document.getElementById('ex_pt1a_'+mid)?.value;
+        const sqFirst=document.getElementById('ex_sqfirst_'+mid)?.value;
+        const marcatore=document.getElementById('ex_marcatore_'+mid)?.value?.trim();
+        const rigori=document.getElementById('ex_rigori_'+mid)?.value;
+        const fascia=document.getElementById('ex_fascia_'+mid)?.value;
+        entry.extra = {};
+        if (pt1h!==''&&pt1a!=='') { entry.extra.pt1h=parseInt(pt1h); entry.extra.pt1a=parseInt(pt1a); }
+        if (sqFirst) entry.extra.sqFirst=sqFirst;
+        if (marcatore) entry.extra.marcatore=marcatore;
+        if (rigori) entry.extra.rigori=rigori;
+        if (fascia) entry.extra.fascia=fascia;
+      }
+      data[mid]=entry;
+    }
   });
   try {
     await fbSet('/pronostici/'+gKey+'/'+currentUser, data);
     pronostici[gKey]=pronostici[gKey]||{}; pronostici[gKey][currentUser]=data;
-    alert('✅ Pronostici knockout salvati!');
+    mostraNotificaInApp('✅ Salvato!','Pronostici '+KO_LABELS[currentKoRound]+' salvati!');
   } catch(e) { alert('❌ Errore'); }
 }
+
 
 // ══════════════════════════════════════════════════
 // PROFILO
@@ -2285,32 +2444,91 @@ async function saveKoMatches(round) {
 function renderKoRisRound(round) {
   const matches=koData[round]||{}; const ris=(koData[round+'_ris'])||{};
   const mids=Object.keys(matches);
+  const conExtra = KO_ROUND_CON_EXTRA.includes(round);
   if (!mids.length) { document.getElementById('ko_ris_'+round).innerHTML='<div style="color:var(--grigio);font-family:Oswald;font-size:0.75rem">Configura prima le partite</div>'; return; }
   let html='';
   mids.forEach(mid=>{
-    const m=matches[mid]; const r=ris[mid]||{};
-    html+=`<div class="ris-match" style="margin-bottom:6px">
-      <div class="ris-team" style="font-size:0.8rem">${m.h}</div>
-      <div class="ris-score-box">
-        <input type="number" min="0" max="99" id="kr_h_${round}_${mid}" value="${r.h!=null?r.h:''}">
-        <span style="color:var(--grigio);font-family:Oswald">–</span>
-        <input type="number" min="0" max="99" id="kr_a_${round}_${mid}" value="${r.a!=null?r.a:''}">
-      </div>
-      <div class="ris-team right" style="font-size:0.8rem">${m.a}</div>
-    </div>`;
+    const m=matches[mid]; const r=ris[mid]||{}; const ex=r.extra||{};
+    html+='<div class="ris-match" style="margin-bottom:6px;flex-wrap:wrap">'
+      +'<div class="ris-team" style="font-size:0.8rem">'+m.h+'</div>'
+      +'<div class="ris-score-box">'
+      +'<input type="number" min="0" max="99" id="kr_h_'+round+'_'+mid+'" value="'+(r.h!=null?r.h:'')+'">'
+      +'<span style="color:var(--grigio);font-family:Oswald">–</span>'
+      +'<input type="number" min="0" max="99" id="kr_a_'+round+'_'+mid+'" value="'+(r.a!=null?r.a:'')+'">'
+      +'</div>'
+      +'<div class="ris-team right" style="font-size:0.8rem">'+m.a+'</div>'
+      +'</div>';
+    if (conExtra) {
+      html+='<div style="padding:8px;background:rgba(201,168,76,0.04);border-radius:6px;margin-bottom:8px">'
+        +'<div style="font-family:Oswald;font-size:0.65rem;color:var(--oro);letter-spacing:0.12em;margin-bottom:8px">EXTRA RISULTATI</div>'
+        // 1° tempo
+        +'<div class="extra-field"><span class="extra-label">Risultato 1° tempo</span>'
+        +'<div class="extra-score-row">'
+        +'<input type="number" min="0" max="20" id="kex_pt1h_'+round+'_'+mid+'" value="'+(ex.pt1h!=null?ex.pt1h:'')+'" placeholder="0">'
+        +'<span style="color:var(--grigio);font-family:Oswald">–</span>'
+        +'<input type="number" min="0" max="20" id="kex_pt1a_'+round+'_'+mid+'" value="'+(ex.pt1a!=null?ex.pt1a:'')+'" placeholder="0">'
+        +'</div></div>'
+        // Squadra primo gol
+        +'<div class="extra-field"><span class="extra-label">Squadra primo gol</span>'
+        +'<select id="kex_sqfirst_'+round+'_'+mid+'" class="extra-select">'
+        +'<option value="">—</option>'
+        +'<option value="'+m.h+'"'+(ex.sqFirst===m.h?' selected':'')+'>'+m.h+'</option>'
+        +'<option value="'+m.a+'"'+(ex.sqFirst===m.a?' selected':'')+'>'+m.a+'</option>'
+        +'<option value="nessuno"'+(ex.sqFirst==='nessuno'?' selected':'')+'>Nessuno</option>'
+        +'</select></div>'
+        // Marcatore
+        +'<div class="extra-field"><span class="extra-label">Marcatore primo gol</span>'
+        +'<input type="text" id="kex_marcatore_'+round+'_'+mid+'" class="extra-text-input" value="'+(ex.marcatore||'')+'" placeholder="Nome giocatore"></div>'
+        // Rigori
+        +'<div class="extra-field"><span class="extra-label">Rigori</span>'
+        +'<select id="kex_rigori_'+round+'_'+mid+'" class="extra-select">'
+        +'<option value="">—</option>'
+        +'<option value="si"'+(ex.rigori==='si'?' selected':'')+'>Sì</option>'
+        +'<option value="no"'+(ex.rigori==='no'?' selected':'')+'>No</option>'
+        +'</select></div>'
+        // Fascia
+        +'<div class="extra-field"><span class="extra-label">Fascia primo gol</span>'
+        +'<select id="kex_fascia_'+round+'_'+mid+'" class="extra-select">'
+        +'<option value="">—</option>'
+        +FASCE_PRIMO_GOL.map(f=>'<option value="'+f+'"'+(ex.fascia===f?' selected':'')+'>'+f+'\'</option>').join('')
+        +'</select></div>'
+        +'</div>';
+    }
   });
   document.getElementById('ko_ris_'+round).innerHTML=html;
 }
+
 async function saveKoRis(round) {
   const matches=koData[round]||{}; const data={};
+  const conExtra = KO_ROUND_CON_EXTRA.includes(round);
   Object.keys(matches).forEach(mid=>{
-    const hEl=document.getElementById('kr_h_'+round+'_'+mid); const aEl=document.getElementById('kr_a_'+round+'_'+mid);
-    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') data[mid]={h:parseInt(hEl.value),a:parseInt(aEl.value)};
+    const hEl=document.getElementById('kr_h_'+round+'_'+mid);
+    const aEl=document.getElementById('kr_a_'+round+'_'+mid);
+    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') {
+      const entry={h:parseInt(hEl.value),a:parseInt(aEl.value)};
+      if (conExtra) {
+        const extra={};
+        const pt1h=document.getElementById('kex_pt1h_'+round+'_'+mid)?.value;
+        const pt1a=document.getElementById('kex_pt1a_'+round+'_'+mid)?.value;
+        if (pt1h!==''&&pt1a!=='') { extra.pt1h=parseInt(pt1h); extra.pt1a=parseInt(pt1a); }
+        const sqFirst=document.getElementById('kex_sqfirst_'+round+'_'+mid)?.value;
+        if (sqFirst) extra.sqFirst=sqFirst;
+        const marcatore=document.getElementById('kex_marcatore_'+round+'_'+mid)?.value?.trim();
+        if (marcatore) extra.marcatore=marcatore;
+        const rigori=document.getElementById('kex_rigori_'+round+'_'+mid)?.value;
+        if (rigori) extra.rigori=rigori;
+        const fascia=document.getElementById('kex_fascia_'+round+'_'+mid)?.value;
+        if (fascia) extra.fascia=fascia;
+        if (Object.keys(extra).length) entry.extra=extra;
+      }
+      data[mid]=entry;
+    }
   });
   try {
     await fbSet('/knockout/'+round+'_ris',data);
     koData[round+'_ris']=data;
     alert('✅ Risultati '+KO_LABELS[round]+' salvati!');
+    renderKoRisRound(round);
   } catch(e) { alert('❌ Errore'); }
 }
 
@@ -3069,6 +3287,7 @@ function adminTab(id) {
   if (id==='risultati-admin') renderRisAdmin();
   if (id==='knockout-admin') renderKoAdmin();
   if (id==='calendario-admin') renderCalAdminPreview();
+  if (id==='countdown-admin') renderCountdownAdmin();
   if (id==='visibilita-admin') renderVisibilitaAdmin();
   // notifiche-admin non richiede init
   if (id==='fifa-live-admin') renderFifaLiveAdmin();
@@ -3120,87 +3339,32 @@ function loadFromCache() {
 }
 
 // ══════════════════════════════════════════════════
-// COUNTDOWN PROSSIMA PARTITA
+// COUNTDOWN - GESTITO DALL'ADMIN
 // ══════════════════════════════════════════════════
 
 let countdownTimer = null;
 
-// Date reali partite Mondiale 2026 (UTC) per le partite selezionate
-// L'app recupera la data dalla stringa 'data' nella partita (es. "21 Giu")
-// e la combina con l'orario tipico del Mondiale (18:00 ora italiana = 16:00 UTC)
-const MESE_MAP = {
-  'gen':0,'feb':1,'mar':2,'apr':3,'mag':4,'giu':5,
-  'lug':6,'ago':7,'set':8,'ott':9,'nov':10,'dic':11,
-  'jan':0,'feb':1,'mar':2,'apr':3,'may':4,'jun':5,
-  'jul':6,'aug':7,'sep':8,'oct':9,'nov':10,'dec':11
-};
-
-function parsaDataPartita(dataStr, homeNorm, awayNorm) {
-  // Prima prova la cache con orari reali dall'API FIFA
-  if (homeNorm && awayNorm) {
-    const cached = fifaDateCache[homeNorm + '_' + awayNorm];
-    if (cached) return cached;
-  }
-  // Fallback: usa la stringa "21 Giu" con ora di default 21:00 CET = 19:00 UTC
-  if (!dataStr) return null;
-  const parts = dataStr.trim().split(' ');
-  if (parts.length < 2) return null;
-  const giorno = parseInt(parts[0]);
-  const meseStr = parts[1].toLowerCase().substring(0, 3);
-  const mese = MESE_MAP[meseStr];
-  if (isNaN(giorno) || mese === undefined) return null;
-  // Fallback: 21:00 CET = 19:00 UTC (orario tipico serale Mondiale)
-  return new Date(Date.UTC(2026, mese, giorno, 19, 0, 0));
-}
-
-function trovaProssimaPartita() {
-  const ora = Date.now();
-  let prossima = null;
-  let prossimaData = null;
-
-  const giornateReali = Object.keys(partite);
-  for (const gKey of giornateReali) {
-    const matchesG = partite[gKey] || {};
-    const selG = selezione[gKey] || {};
-    const selMids = Object.keys(selG).filter(k => selG[k]);
-    const risG = risultati[gKey] || {};
-
-    // Usa SOLO le partite selezionate dall'admin per i pronostici.
-    // Se non ce ne sono ancora per questa giornata, salta.
-    if (!selMids.length) continue;
-
-    for (const mid of selMids) {
-      const m = matchesG[mid];
-      const r = risG[mid];
-      if (!m) continue;
-      // Salta partite che hanno GIÀ un risultato (automatico o manuale)
-      if (r && r.h != null && r.a != null) continue;
-      const data = parsaDataPartita(m.data, normalizzaNomeSquadra(m.h), normalizzaNomeSquadra(m.a));
-      if (!data) continue;
-      if (data.getTime() > ora) {
-        if (!prossimaData || data.getTime() < prossimaData.getTime()) {
-          prossimaData = data;
-          prossima = { ...m, gKey, mid };
-        }
-      }
-    }
-  }
-  return { partita: prossima, data: prossimaData };
+function avviaCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  renderCountdown();
+  countdownTimer = setInterval(renderCountdown, 1000);
 }
 
 function renderCountdown() {
   const el = document.getElementById('countdown-container');
   if (!el) return;
-  const { partita, data } = trovaProssimaPartita();
-  if (!partita || !data) {
+
+  if (!countdownData || !countdownData.ts) {
     el.innerHTML = '';
     return;
   }
-  const diff = data.getTime() - Date.now();
+
+  const diff = countdownData.ts - Date.now();
   if (diff <= 0) {
-    el.innerHTML = '';
+    el.innerHTML = '<div class="countdown-card"><div class="countdown-label">⚽ In corso!</div><div class="countdown-match">' + (countdownData.label||'') + '</div></div>';
     return;
   }
+
   const giorni = Math.floor(diff / 86400000);
   const ore = Math.floor((diff % 86400000) / 3600000);
   const minuti = Math.floor((diff % 3600000) / 60000);
@@ -3208,7 +3372,7 @@ function renderCountdown() {
 
   el.innerHTML = '<div class="countdown-card">'
     + '<div class="countdown-label">⏱ Prossima partita</div>'
-    + '<div class="countdown-match">' + partita.h + ' vs ' + partita.a + ' · ' + (partita.data||'') + '</div>'
+    + '<div class="countdown-match">' + (countdownData.label || '') + '</div>'
     + '<div class="countdown-timer">'
     + (giorni > 0 ? '<div class="countdown-unit"><div class="countdown-num">' + giorni + '</div><div class="countdown-unit-label">giorni</div></div><div class="countdown-sep">:</div>' : '')
     + '<div class="countdown-unit"><div class="countdown-num">' + String(ore).padStart(2,'0') + '</div><div class="countdown-unit-label">ore</div></div>'
@@ -3219,10 +3383,93 @@ function renderCountdown() {
     + '</div></div>';
 }
 
-function avviaCountdown() {
-  if (countdownTimer) clearInterval(countdownTimer);
-  renderCountdown();
-  countdownTimer = setInterval(renderCountdown, 1000);
+// ── ADMIN COUNTDOWN ──
+
+function renderCountdownAdmin() {
+  // Popola select con partite selezionate
+  const sel = document.getElementById('cd-partita');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Nessuna partita (usa il messaggio sopra) —</option>';
+  Object.keys(partite).forEach(gKey => {
+    const matchesG = partite[gKey] || {};
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    selMids.forEach(mid => {
+      const m = matchesG[mid];
+      if (!m) return;
+      const label = m.h + ' vs ' + m.a + ' (' + (m.data||gKey) + ')';
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify({ h: m.h, a: m.a, data: m.data });
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  });
+  // Ripristina valori attuali
+  if (countdownData) {
+    const dt = document.getElementById('cd-datetime');
+    if (dt && countdownData.ts) {
+      // Converte timestamp UTC in datetime-local (ora italiana)
+      const d = new Date(countdownData.ts);
+      const offset = 2; // CEST = UTC+2
+      const local = new Date(d.getTime() + offset * 3600000);
+      dt.value = local.toISOString().slice(0,16);
+    }
+    const msg = document.getElementById('cd-messaggio');
+    if (msg) msg.value = countdownData.label || '';
+  }
+}
+
+async function salvaCountdownAdmin() {
+  const dt = document.getElementById('cd-datetime').value;
+  const messaggio = document.getElementById('cd-messaggio').value.trim();
+  const partitaSel = document.getElementById('cd-partita').value;
+  const msgEl = document.getElementById('cd-msg');
+
+  if (!dt) { msgEl.innerHTML = '<div class="msg msg-err">Inserisci data e ora</div>'; return; }
+
+  // Converti ora italiana in UTC (CEST = UTC+2)
+  const localDate = new Date(dt); // il browser interpreta datetime-local come locale
+  // Ma datetime-local non ha fuso orario, lo tratta come locale del browser
+  // Per sicurezza usiamo i componenti della stringa direttamente
+  const [datePart, timePart] = dt.split('T');
+  const [anno, mese, giorno] = datePart.split('-').map(Number);
+  const [ore, minuti] = timePart.split(':').map(Number);
+  // Ora italiana CEST = UTC+2 → sottraiamo 2 ore per avere UTC
+  const tsUTC = Date.UTC(anno, mese-1, giorno, ore-2, minuti, 0);
+
+  // Label: usa il messaggio se presente, altrimenti la partita selezionata
+  let label = messaggio;
+  if (!label && partitaSel) {
+    try {
+      const p = JSON.parse(partitaSel);
+      label = p.h + ' vs ' + p.a;
+      if (p.data) label += ' · ' + p.data;
+    } catch(e) {}
+  }
+  if (!label) { msgEl.innerHTML = '<div class="msg msg-err">Inserisci un messaggio o seleziona una partita</div>'; return; }
+
+  const data = { ts: tsUTC, label };
+  try {
+    await fbSet('/countdown', data);
+    countdownData = data;
+    msgEl.innerHTML = '<div class="msg msg-ok">✅ Countdown impostato!</div>';
+    setTimeout(() => msgEl.innerHTML = '', 3000);
+    avviaCountdown();
+  } catch(e) {
+    msgEl.innerHTML = '<div class="msg msg-err">❌ Errore salvataggio</div>';
+  }
+}
+
+async function cancellaCountdown() {
+  try {
+    await fbDelete('/countdown');
+    countdownData = null;
+    document.getElementById('cd-msg').innerHTML = '<div class="msg msg-ok">✅ Countdown rimosso</div>';
+    setTimeout(() => document.getElementById('cd-msg').innerHTML = '', 3000);
+    renderCountdown();
+  } catch(e) {
+    document.getElementById('cd-msg').innerHTML = '<div class="msg msg-err">❌ Errore</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════
