@@ -1946,35 +1946,45 @@ function changeGiornataRis(d) {
 function renderRisultati() {
   const gKey='g'+currentGiornataRis;
   document.getElementById('ris-giornata-label').textContent='Giornata '+currentGiornataRis;
-  // Usa partite da Firebase, con fallback alle partite precaricate nel codice
-  const matchesG = getPartite(gKey);
-  const ris=risultati[gKey]||{};
-  const selG=selezione[gKey]||{};
-  const selMids=Object.keys(selG).filter(k=>selG[k]);
-  const mids=selMids.length?selMids:Object.keys(matchesG);
-  if (!mids.length) { document.getElementById('ris-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita</div>'; return; }
-  let html='';
-  mids.forEach(mid=>{
-    const m=matchesG[mid]; if(!m) return;
-    const r=ris[mid]||{};
-    // Controlla se la partita è ancora futura e il risultato 0-0 è fittizio
-    const dataPartita = parsaDataPartita(m.data, normalizzaNomeSquadra(m.h), normalizzaNomeSquadra(m.a));
-    const eFutura = dataPartita && dataPartita.getTime() > Date.now();
-    const risultatoFittizio = r.h==0 && r.a==0 && !r.manuale && eFutura;
-    const done = r.h!=null && r.a!=null && !risultatoFittizio;
-    const hVal = done ? r.h : '–';
-    const aVal = done ? r.a : '–';
-    html+=`<div class="ris-match">
-      <div class="ris-team">${m.h||'Casa'}</div>
-      <div class="ris-score-box">
-        <span style="font-family:Oswald;font-size:1.2rem;font-weight:700;color:${done?'var(--oro2)':'var(--grigio)'}; min-width:28px; text-align:center">${hVal}</span>
-        <span style="color:var(--grigio);font-family:Oswald">–</span>
-        <span style="font-family:Oswald;font-size:1.2rem;font-weight:700;color:${done?'var(--oro2)':'var(--grigio)'}; min-width:28px; text-align:center">${aVal}</span>
-      </div>
-      <div class="ris-team right">${m.a||'Ospite'}</div>
-    </div>`;
-  });
-  document.getElementById('ris-content').innerHTML=html;
+  try {
+    const matchesG = getPartite(gKey);
+    const ris=risultati[gKey]||{};
+    const selG=selezione[gKey]||{};
+    const selMids=Object.keys(selG).filter(k=>selG[k]);
+    const mids=selMids.length?selMids:Object.keys(matchesG);
+    if (!mids.length) {
+      document.getElementById('ris-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita</div>';
+      return;
+    }
+    let html='';
+    mids.forEach(mid=>{
+      const m=matchesG[mid]; if(!m) return;
+      const r=ris[mid]||{};
+      // Mostra "–" se non c'è risultato, oppure se è 0-0 non manuale su partita futura
+      let done = r.h!=null && r.a!=null;
+      if (done && r.h==0 && r.a==0 && !r.manuale) {
+        try {
+          const dp = parsaDataPartita(m.data, normalizzaNomeSquadra(m.h||''), normalizzaNomeSquadra(m.a||''));
+          if (dp && dp.getTime() > Date.now()) done = false;
+        } catch(e) {}
+      }
+      const hVal = done ? r.h : '–';
+      const aVal = done ? r.a : '–';
+      html+=`<div class="ris-match">
+        <div class="ris-team">${m.h||'Casa'}</div>
+        <div class="ris-score-box">
+          <span style="font-family:Oswald;font-size:1.2rem;font-weight:700;color:${done?'var(--oro2)':'var(--grigio)'};min-width:28px;text-align:center">${hVal}</span>
+          <span style="color:var(--grigio);font-family:Oswald">–</span>
+          <span style="font-family:Oswald;font-size:1.2rem;font-weight:700;color:${done?'var(--oro2)':'var(--grigio)'};min-width:28px;text-align:center">${aVal}</span>
+        </div>
+        <div class="ris-team right">${m.a||'Ospite'}</div>
+      </div>`;
+    });
+    document.getElementById('ris-content').innerHTML = html || '<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita</div>';
+  } catch(e) {
+    console.error('renderRisultati error:', e);
+    document.getElementById('ris-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Errore caricamento: '+e.message+'</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════
