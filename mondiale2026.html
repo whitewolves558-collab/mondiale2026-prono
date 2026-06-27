@@ -937,6 +937,14 @@ const PARTITE_MONDIALE = {
   }
 };
 
+// Helper: restituisce le partite da Firebase o dal precaricato come fallback
+function getPartite(gKey) {
+  const fb = partite[gKey];
+  if (fb && Object.keys(fb).length > 0) return fb;
+  return PARTITE_MONDIALE[gKey] || {};
+}
+
+
 // ══════════════════════════════════════════════════
 // FIREBASE REST
 // ══════════════════════════════════════════════════
@@ -1173,7 +1181,7 @@ async function aggiornaRisultatiAutomatico(manuale) {
   const giornateReali = Object.keys(partite);
 
   for (const gKey of giornateReali) {
-    const matchesG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+    const matchesG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
     const risG = risultati[gKey] || {};
     const selG = selezione[gKey] || {};
     const selMids = Object.keys(selG).filter(k => selG[k]);
@@ -1387,7 +1395,7 @@ async function diagnosticaRisultatiGiornata() {
   for (let g=1; g<=3; g++) {
     const gKey = 'g'+g;
     const risG = risultati[gKey] || {};
-    const parG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+    const parG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
     const selG = selezione[gKey] || {};
     const selMids = Object.keys(selG).filter(k => selG[k]);
     const nRisultati = Object.keys(risG).length;
@@ -1428,7 +1436,7 @@ async function pulisciRisultatiNonSelezionati() {
   const fuoriSelezione = [];
   Object.keys(risultati).forEach(gKey => {
     const risG = risultati[gKey] || {};
-    const parG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+    const parG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
     const selG = selezione[gKey] || {};
     const selMids = Object.keys(selG).filter(k => selG[k]);
     if (!selMids.length) {
@@ -1561,7 +1569,7 @@ async function pulisciRisultatiSospetti() {
   // (confronto debole == per gestire sia numeri che stringhe "0")
   const sospette = [];
   Object.keys(partite).forEach(gKey => {
-    const matchesG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+    const matchesG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
     const risG = risultati[gKey] || {};
     Object.keys(matchesG).forEach(mid => {
       const r = risG[mid];
@@ -1854,7 +1862,7 @@ function changeGiornata(d) {
 function renderPronostici() {
   const gKey = 'g'+currentGiornata;
   document.getElementById('prono-giornata-label').textContent = 'Giornata '+currentGiornata;
-  const matchesG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+  const matchesG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
   const selG = selezione[gKey] || {};
   const myPro = (pronostici[gKey]||{})[currentUser]||{};
   const ris = risultati[gKey]||{};
@@ -1939,7 +1947,7 @@ function renderRisultati() {
   const gKey='g'+currentGiornataRis;
   document.getElementById('ris-giornata-label').textContent='Giornata '+currentGiornataRis;
   // Usa partite da Firebase, con fallback alle partite precaricate nel codice
-  const matchesG=Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{});
+  const matchesG=Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{});
   const ris=risultati[gKey]||{};
   const selG=selezione[gKey]||{};
   const selMids=Object.keys(selG).filter(k=>selG[k]);
@@ -2279,7 +2287,7 @@ let partiteBuffer=[];
 function renderPartiteEditor() {
   const gKey='g'+currentGiornataAdmin;
   document.getElementById('admin-giornata-label').textContent='Giornata '+currentGiornataAdmin;
-  const existing=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+  const existing=getPartite(gKey);
   const selG = (selezione[gKey])||{};
   const mids = Object.keys(existing);
   const numSel = Object.keys(selG).filter(k=>selG[k]).length;
@@ -2364,7 +2372,7 @@ async function salvaSelezione(gKey) {
 
 function addPartita() {
   const gKey='g'+currentGiornataAdmin;
-  const existing=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+  const existing=getPartite(gKey);
   const newId='m_'+(Date.now()%100000);
   existing[newId]={h:'',a:'',gruppo:'',data:''};
   partite[gKey]=existing;
@@ -2387,7 +2395,7 @@ function changeGiornataRisAdmin(d) {
 function renderRisAdmin() {
   const gKey='g'+currentGiornataRisAdmin;
   document.getElementById('ris-admin-giornata-label').textContent='Giornata '+currentGiornataRisAdmin;
-  const matchesG=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+  const matchesG=getPartite(gKey);
   const ris=risultati[gKey]||{};
   const selG=selezione[gKey]||{};
   const selMids=Object.keys(selG).filter(k=>selG[k]);
@@ -2411,7 +2419,7 @@ function renderRisAdmin() {
 }
 async function saveRisultatiAdmin() {
   const gKey='g'+currentGiornataRisAdmin;
-  const matchesG=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+  const matchesG=getPartite(gKey);
   const selG=selezione[gKey]||{};
   const selMids=Object.keys(selG).filter(k=>selG[k]);
   const mids=selMids.length?selMids:Object.keys(matchesG);
@@ -2609,7 +2617,7 @@ function renderAltrui() {
     return;
   }
 
-  const matchesG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+  const matchesG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
   const ris = risultati[gKey] || {};
   const sel = selezione[gKey] || {};
   const selMids = Object.keys(sel).filter(mid => sel[mid]);
@@ -2710,7 +2718,7 @@ function renderVisibilitaAdmin() {
   for (let g = 1; g <= maxG; g++) {
     const gKey = 'g' + g;
     const abilitata = visibilita[gKey] === true;
-    const haPartite = Object.keys((Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}))).length > 0;
+    const haPartite = Object.keys((Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}))).length > 0;
     if (!haPartite) continue;
     html += '<div class="player-chip" style="margin-bottom:8px">'
       + '<div><div class="pname">Giornata ' + g + '</div>'
@@ -2903,7 +2911,7 @@ function stampaPronosticiGiornata() {
   const g = parseInt(document.getElementById('giornata-da-stampare').value);
   const gKey = 'g' + g;
   const sel = selezione[gKey] || {};
-  const par = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+  const par = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
   const ris = risultati[gKey] || {};
   const selMids = Object.keys(sel).filter(mid => sel[mid]);
   const midsToShow = selMids.length ? selMids : Object.keys(par);
@@ -3037,7 +3045,7 @@ function stampaSelezione() {
   let html = '<div style="font-family:serif;padding:20px;color:#000"><h1 style="text-align:center;margin-bottom:20px">Partite Selezionate - '+(config.nome||'Mondiale 2026')+'</h1>';
   if (!giornateReali.length) { html+='<p style="color:#999">Nessuna partita caricata</p>'; }
   giornateReali.forEach(g => {
-    const gKey='g'+g; const sel=selezione[gKey]||{}; const par=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+    const gKey='g'+g; const sel=selezione[gKey]||{}; const par=getPartite(gKey);
     const selMids=Object.keys(sel).filter(mid=>sel[mid]);
     if (!selMids.length && !Object.keys(par).length) return;
     html+='<h2 style="margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:4px">Giornata '+g+'</h2>';
@@ -3087,7 +3095,7 @@ function stampaTutto() {
   // Sezione partite selezionate
   html+='<div style="page-break-before:always"></div><h2 style="border-bottom:2px solid #000;padding-bottom:6px;margin:20px 0 12px">Partite Selezionate</h2>';
   giornateReali2.forEach(g=>{
-    const gKey='g'+g; const sel=selezione[gKey]||{}; const par=(Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}));
+    const gKey='g'+g; const sel=selezione[gKey]||{}; const par=getPartite(gKey);
     const selMids=Object.keys(sel).filter(mid=>sel[mid]);
     if(!selMids.length) return;
     html+='<h3 style="margin:12px 0 4px">Giornata '+g+'</h3><table style="width:100%;border-collapse:collapse;font-size:0.85rem"><tbody>';
@@ -3395,7 +3403,7 @@ function renderCountdownAdmin() {
   if (!sel) return;
   sel.innerHTML = '<option value="">— Nessuna partita (usa il messaggio sopra) —</option>';
   Object.keys(partite).forEach(gKey => {
-    const matchesG = (Object.keys((Object.keys(partite[gKey]||{}).length?partite[gKey]:(PARTITE_MONDIALE[gKey]||{}))).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
+    const matchesG = (Object.keys(getPartite(gKey)).length ? partite[gKey] : (PARTITE_MONDIALE[gKey]||{}));
     const selG = selezione[gKey] || {};
     const selMids = Object.keys(selG).filter(k => selG[k]);
     selMids.forEach(mid => {
