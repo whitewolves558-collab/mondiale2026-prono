@@ -2016,8 +2016,37 @@ function renderKoRound() {
   const hasRis=Object.keys(ris).length>0;
   const mids=Object.keys(matches);
   const conExtra = KO_ROUND_CON_EXTRA.includes(currentKoRound);
-  if (!mids.length) { document.getElementById('ko-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita configurata</div>'; return; }
+
+  if (!mids.length) {
+    document.getElementById('ko-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita configurata</div>';
+    return;
+  }
+
+  // Controlla se i pronostici per questo turno sono aperti
+  // L'admin li apre da Admin → Knockout → pulsante "Apri pronostici"
+  const pronosticAperti = (koData['prono_aperto_'+currentKoRound] === true) || isAdmin;
+  const modalitaSolaLettura = !pronosticAperti && !hasRis;
+
   let html='<div class="bracket-round"><div class="bracket-round-title">'+KO_LABELS[currentKoRound]+'</div>';
+
+  // Modalità tabellone (sola lettura)
+  if (modalitaSolaLettura) {
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">📋 Tabellone accoppiamenti — i pronostici apriranno a breve</div>';
+    mids.forEach(mid=>{
+      const m=matches[mid]; const r=ris[mid]||{};
+      const done = r.h!=null && r.a!=null;
+      html += '<div class="bracket-match">'
+        + '<div class="bm-player">'+( m.h||'TBD')+'</div>'
+        + '<div style="font-family:Cinzel;font-size:0.85rem;color:var(--oro2);min-width:50px;text-align:center">'
+        + (done ? r.h+'–'+r.a : 'vs')
+        + '</div>'
+        + '<div class="bm-player right">'+(m.a||'TBD')+'</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    document.getElementById('ko-content').innerHTML = html;
+    return;
+  }
   mids.forEach(mid=>{
     const m=matches[mid]; const r=ris[mid]||{}; const mpr=mio[mid]||{};
     let badge='';
@@ -3278,15 +3307,18 @@ function renderKoAdmin() {
     const nextRoundMap={ottavi:'quarti',quarti:'semifinali',semifinali:'finale'};
     const nextRound=nextRoundMap[round];
     const nextLabel=nextRound?KO_LABELS[nextRound]:'';
+    const pronosticAperti = koData['prono_aperto_'+round] === true;
     const avanzaBtn=nextRound
       ? '<button class="btn btn-sm" style="background:rgba(26,122,66,0.3);color:#4ade80;border:1px solid rgba(74,222,128,0.3)" onclick="avanzaKnockout(\''+round+'\')">Genera '+nextLabel+'</button>'
       : '';
+    const pronoBtn = '<button class="btn btn-sm" style="background:'+(pronosticAperti?'rgba(192,57,43,0.2)':'rgba(201,168,76,0.15)')+';color:'+(pronosticAperti?'#f87171':'var(--oro2)')+';border:1px solid '+(pronosticAperti?'rgba(192,57,43,0.4)':'var(--border2)')+'" onclick="togglePronosticoKo(\''+round+'\')">'+(pronosticAperti?'🔒 Chiudi pronostici':'🔓 Apri pronostici')+'</button>';
     html += '<div class="admin-section" style="margin-bottom:20px">'
-      + '<div class="card-title">'+KO_LABELS[round]+'</div>'
+      + '<div class="card-title">'+KO_LABELS[round]+' <span style="font-size:0.65rem;font-family:Oswald;letter-spacing:0.1em;color:'+(pronosticAperti?'#4ade80':'var(--grigio)')+'">'+( pronosticAperti?'● Pronostici aperti':'○ Solo tabellone')+'</span></div>'
       + '<div id="ko_editor_'+round+'"></div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
       + '<button class="btn btn-outline btn-sm" onclick="addKoMatch(\''+round+'\')">+ Partita</button>'
       + '<button class="btn btn-gold btn-sm" onclick="saveKoMatches(\''+round+'\')">Salva</button>'
+      + pronoBtn
       + avanzaBtn
       + '</div>'
       + '<hr class="divider">'
@@ -3297,6 +3329,19 @@ function renderKoAdmin() {
   });
   document.getElementById('ko-admin-content').innerHTML=html;
   KO_ROUNDS.forEach(round=>{ renderKoEditorRound(round); renderKoRisRound(round); });
+}
+
+async function togglePronosticoKo(round) {
+  const attuale = koData['prono_aperto_'+round] === true;
+  const nuovo = !attuale;
+  try {
+    await fbPatch('/knockout', { ['prono_aperto_'+round]: nuovo });
+    koData['prono_aperto_'+round] = nuovo;
+    renderKoAdmin();
+    const msg = nuovo ? '🔓 Pronostici '+KO_LABELS[round]+' aperti a tutti!' : '🔒 Pronostici chiusi — solo tabellone';
+    mostraNotificaInApp(nuovo ? '🔓 Pronostici aperti' : '🔒 Pronostici chiusi', KO_LABELS[round]);
+    if (nuovo) inviaNotificaPush('Pronostici aperti!', 'Inserisci i tuoi pronostici per gli '+KO_LABELS[round]+'!');
+  } catch(e) { alert('Errore: '+e.message); }
 }
 
 function adminTab(id) {
