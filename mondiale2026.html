@@ -644,7 +644,7 @@
         </div>
         <div class="input-group">
           <label>Numero Giornate (fase gironi)</label>
-          <input type="number" id="cfg-giornate" value="6" min="1" max="20">
+          <input type="number" id="cfg-giornate" value="7" min="1" max="20">
         </div>
         <div class="input-group">
           <label>Numero Gironi</label>
@@ -708,6 +708,7 @@
       </div>
 
       <div id="admin-partite" class="admin-section" style="display:none">
+        <div id="partite-fase-nota" class="msg msg-info" style="margin-bottom:10px;font-size:0.75rem;display:none"></div>
         <div class="giornata-nav">
           <button class="btn btn-outline btn-sm" onclick="changeGiornataAdmin(-1)">◀</button>
           <span class="gn-label" id="admin-giornata-label">Giornata 1</span>
@@ -851,6 +852,11 @@ let currentGiornataRisAdmin = 1;
 let currentKoRound = 'ottavi';
 
 const KO_ROUNDS = ['ottavi','quarti','semifinali','finale'];
+const GIORNATA_LABELS = {
+  1: 'Giornata 1', 2: 'Giornata 2', 3: 'Giornata 3',
+  4: 'Ottavi di Finale', 5: 'Quarti di Finale',
+  6: 'Semifinali', 7: 'Finale'
+};
 const KO_LABELS = { ottavi:'Ottavi di Finale', quarti:'Quarti di Finale', semifinali:'Semifinali', finale:'Finale' };
 
 // ══════════════════════════════════════════════════
@@ -1861,7 +1867,7 @@ function changeGiornata(d) {
 
 function renderPronostici() {
   const gKey = 'g'+currentGiornata;
-  document.getElementById('prono-giornata-label').textContent = 'Giornata '+currentGiornata;
+  document.getElementById('prono-giornata-label').textContent = GIORNATA_LABELS[currentGiornata]||('Giornata '+currentGiornata);
   const matchesG = getPartite(gKey);
   const selG = selezione[gKey] || {};
   const myPro = (pronostici[gKey]||{})[currentUser]||{};
@@ -1945,7 +1951,7 @@ function changeGiornataRis(d) {
 }
 function renderRisultati() {
   const gKey='g'+currentGiornataRis;
-  document.getElementById('ris-giornata-label').textContent='Giornata '+currentGiornataRis;
+  document.getElementById('ris-giornata-label').textContent=GIORNATA_LABELS[currentGiornataRis]||('Giornata '+currentGiornataRis);
   try {
     const matchesG = getPartite(gKey);
     const ris=risultati[gKey]||{};
@@ -2300,7 +2306,7 @@ async function removePlayer(name) {
 // ADMIN – PARTITE
 // ══════════════════════════════════════════════════
 function changeGiornataAdmin(d) {
-  const max=config.giornate||3;
+  const max=config.giornate||7;
   currentGiornataAdmin=Math.max(1,Math.min(max,currentGiornataAdmin+d));
   renderPartiteEditor();
 }
@@ -2325,7 +2331,18 @@ async function caricaPartiteMondiale(g) {
 let partiteBuffer=[];
 function renderPartiteEditor() {
   const gKey='g'+currentGiornataAdmin;
-  document.getElementById('admin-giornata-label').textContent='Giornata '+currentGiornataAdmin;
+  // Mostra nota per le fasi eliminatorie
+  const notaEl = document.getElementById('partite-fase-nota');
+  if (notaEl) {
+    if (currentGiornataAdmin >= 4) {
+      const label = GIORNATA_LABELS[currentGiornataAdmin] || 'Fase eliminatoria';
+      notaEl.textContent = '📋 '+label+' — inserisci le partite FIFA su cui i giocatori pronosticheranno.';
+      notaEl.style.display = 'block';
+    } else {
+      notaEl.style.display = 'none';
+    }
+  }
+  document.getElementById('admin-giornata-label').textContent=GIORNATA_LABELS[currentGiornataAdmin]||('Giornata '+currentGiornataAdmin);
   const existing=getPartite(gKey);
   const selG = (selezione[gKey])||{};
   const mids = Object.keys(existing);
@@ -2368,7 +2385,7 @@ function renderPartiteEditor() {
   }
 
   document.getElementById('partite-editor').innerHTML = html;
-  document.getElementById('admin-giornata-label').textContent='Giornata '+currentGiornataAdmin;
+  document.getElementById('admin-giornata-label').textContent=GIORNATA_LABELS[currentGiornataAdmin]||('Giornata '+currentGiornataAdmin);
 }
 
 async function toggleSelezione(gKey, mid) {
@@ -2433,7 +2450,7 @@ function changeGiornataRisAdmin(d) {
 }
 function renderRisAdmin() {
   const gKey='g'+currentGiornataRisAdmin;
-  document.getElementById('ris-admin-giornata-label').textContent='Giornata '+currentGiornataRisAdmin;
+  document.getElementById('ris-admin-giornata-label').textContent=GIORNATA_LABELS[currentGiornataRisAdmin]||('Giornata '+currentGiornataRisAdmin);
   const matchesG=getPartite(gKey);
   const ris=risultati[gKey]||{};
   const selG=selezione[gKey]||{};
@@ -2752,7 +2769,7 @@ function togglePlayerAccordion(id) {
 // ══════════════════════════════════════════════════
 
 function renderVisibilitaAdmin() {
-  const maxG = config.giornate || 6;
+  const maxG = config.giornate || 7;
   let html = '';
   for (let g = 1; g <= maxG; g++) {
     const gKey = 'g' + g;
