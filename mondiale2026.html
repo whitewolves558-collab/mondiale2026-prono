@@ -2497,6 +2497,46 @@ async function saveRisultatiAdmin() {
 // ══════════════════════════════════════════════════
 // renderKoAdmin definita sotto
 
+let koBuffers = {};
+
+function renderKoEditorRound(round) {
+  const matches = koData[round] || {};
+  koBuffers[round] = Object.entries(matches).map(([id,m]) => ({id, h:m.h||'', a:m.a||''}));
+  if (!koBuffers[round].length) koBuffers[round] = [{id:'k1', h:'', a:''}];
+  let html = '';
+  koBuffers[round].forEach((m,i) => {
+    html += '<div style="display:grid;grid-template-columns:1fr auto 1fr auto;gap:6px;align-items:center;margin-bottom:6px">'
+      + '<input type="text" id="ko_h_'+round+'_'+i+'" value="'+m.h+'" placeholder="Giocatore A" style="background:rgba(201,168,76,0.08);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:Crimson Pro,serif;font-size:0.9rem;outline:none">'
+      + '<span style="color:var(--grigio);font-family:Oswald;text-align:center;padding:0 4px">vs</span>'
+      + '<input type="text" id="ko_a_'+round+'_'+i+'" value="'+m.a+'" placeholder="Giocatore B" style="background:rgba(201,168,76,0.08);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-family:Crimson Pro,serif;font-size:0.9rem;outline:none">'
+      + '<button onclick="removeKoMatch(\''+round+'\','+i+')" style="background:rgba(192,57,43,0.2);color:#e74c3c;border:1px solid rgba(192,57,43,0.4);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem">✕</button>'
+      + '</div>';
+  });
+  const el = document.getElementById('ko_editor_'+round);
+  if (el) el.innerHTML = html;
+}
+
+function addKoMatch(round) {
+  koBuffers[round] = koBuffers[round] || [];
+  // Salva i valori attuali prima di aggiungere
+  koBuffers[round].forEach((m,i) => {
+    m.h = document.getElementById('ko_h_'+round+'_'+i)?.value || '';
+    m.a = document.getElementById('ko_a_'+round+'_'+i)?.value || '';
+  });
+  koBuffers[round].push({id:'k'+(Date.now()%100000), h:'', a:''});
+  renderKoEditorRound(round);
+}
+
+function removeKoMatch(round, idx) {
+  koBuffers[round] = koBuffers[round] || [];
+  koBuffers[round].forEach((m,i) => {
+    m.h = document.getElementById('ko_h_'+round+'_'+i)?.value || '';
+    m.a = document.getElementById('ko_a_'+round+'_'+i)?.value || '';
+  });
+  koBuffers[round].splice(idx, 1);
+  renderKoEditorRound(round);
+}
+
 async function saveKoMatches(round) {
   const buf=koBuffers[round]||[];
   buf.forEach((m,i)=>{m.h=document.getElementById('ko_h_'+round+'_'+i)?.value||'';m.a=document.getElementById('ko_a_'+round+'_'+i)?.value||'';});
