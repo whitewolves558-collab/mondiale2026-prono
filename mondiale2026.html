@@ -3399,27 +3399,31 @@ function calcQualificati() {
     const gTag = 'G'+(gi+1);
     const playersInG = Object.keys(players).filter(p => players[p].girone===gTag);
     const sorted = playersInG.sort((a,b) => {
-      const sa=scores[a]||{pt:0,re:0}; const sb=scores[b]||{pt:0,re:0};
+      const sa=scores[a]||{pt:0,re:0,gf:0,gs:0}; const sb=scores[b]||{pt:0,re:0,gf:0,gs:0};
+      // Stesso ordine criteri della classifica ufficiale (renderClassifica):
+      // 1° punti, 2° differenza punti pronostico, 3° punti fatti, 4° RE
       if (sb.pt!==sa.pt) return sb.pt-sa.pt;
-      if (sb.re!==sa.re) return sb.re-sa.re;
-      return (sb.gf||0)-(sb.gs||0) - ((sa.gf||0)-(sa.gs||0));
+      const da=(sa.gf-sa.gs), db=(sb.gf-sb.gs); if (db!==da) return db-da;
+      if (sb.gf!==sa.gf) return sb.gf-sa.gf;
+      return sb.re-sa.re;
     });
     sorted.forEach((p, i) => {
-      const s = scores[p]||{pt:0,re:0};
+      const s = scores[p]||{pt:0,re:0,gf:0,gs:0};
       if (i < 3) {
         qualificati.push({ player:p, girone:gTag, gironeName:gName||gTag, pos:i+1, pt:s.pt, re:s.re });
       } else if (i === 3) {
-        quarti.push({ player:p, girone:gTag, gironeName:gName||gTag, pos:4, pt:s.pt, re:s.re });
+        quarti.push({ player:p, girone:gTag, gironeName:gName||gTag, pos:4, pt:s.pt, re:s.re, gf:s.gf, gs:s.gs });
       }
     });
   });
 
-  // Scegli il miglior 4°: criterio punti girone → RE → punti totali torneo
+  // Scegli il miglior 4°: stesso ordine criteri della classifica ufficiale
+  // 1° punti, 2° differenza punti pronostico, 3° punti fatti, 4° RE
   quarti.sort((a,b) => {
     if (b.pt!==a.pt) return b.pt-a.pt;
-    if (b.re!==a.re) return b.re-a.re;
-    const ptA=(scores[a.player]||{pt:0}).pt; const ptB=(scores[b.player]||{pt:0}).pt;
-    return ptB-ptA;
+    const da=(a.gf-a.gs), db=(b.gf-b.gs); if (db!==da) return db-da;
+    if (b.gf!==a.gf) return b.gf-a.gf;
+    return b.re-a.re;
   });
   const migliorQuarto = quarti[0];
   if (migliorQuarto) qualificati.push({...migliorQuarto, pos:'4° migliore'});
