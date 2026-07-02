@@ -2430,14 +2430,11 @@ async function savePartiteKO() {
     setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3000);
     return;
   }
+  // Le squadre non ancora note (in attesa di qualificazione) restano vuote e
+  // vengono mostrate come "?" — non blocca il salvataggio dell'intero tabellone.
   for (const mid of mids) {
     const m = existing[mid];
-    if (!m.h || !m.a) {
-      document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">Ogni partita deve avere entrambe le squadre selezionate.</div>';
-      setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3500);
-      return;
-    }
-    if (m.h === m.a) {
+    if (m.h && m.a && m.h === m.a) {
       document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">Una partita non può avere la stessa squadra sia in casa che in trasferta.</div>';
       setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3500);
       return;
@@ -2445,13 +2442,20 @@ async function savePartiteKO() {
   }
   try {
     await fbSet('/partite/'+gKey, existing);
-    // In fase eliminatoria tutte le partite inserite sono da pronosticare (nessuna selezione di 10)
+    // Vengono marcate come "da pronosticare" solo le partite con ENTRAMBE le squadre note.
+    // Quelle ancora con una o due squadre da definire restano fuori selezione: appariranno
+    // ai giocatori solo quando l'admin le completerà e salverà di nuovo.
     const selAll={};
-    mids.forEach(mid=>selAll[mid]=true);
+    let complete=0, incomplete=0;
+    mids.forEach(mid=>{
+      if (existing[mid].h && existing[mid].a) { selAll[mid]=true; complete++; }
+      else { incomplete++; }
+    });
     await fbSet('/selezione/'+gKey, selAll);
     selezione[gKey]=selAll;
-    document.getElementById('partite-msg').innerHTML=`<div class="msg msg-ok">✅ ${mids.length} partite salvate! I giocatori potranno pronosticarle tutte.</div>`;
-    setTimeout(()=>document.getElementById('partite-msg').innerHTML='',4000);
+    const msgIncompleto = incomplete>0 ? ` (${incomplete} in attesa di squadre da definire — mostrate con "?")` : '';
+    document.getElementById('partite-msg').innerHTML=`<div class="msg msg-ok">✅ Salvato! ${complete} partite pronte per i pronostici${msgIncompleto}.</div>`;
+    setTimeout(()=>document.getElementById('partite-msg').innerHTML='',5000);
     renderPartiteEditor();
   } catch(e) {
     document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">❌ Errore salvataggio</div>';
