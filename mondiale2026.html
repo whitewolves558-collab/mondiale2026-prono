@@ -1692,13 +1692,30 @@ function showSection(id) {
   if (idx>=0 && btns[idx]) btns[idx].classList.add('active');
 
   if (id==='classifica') renderClassifica();
-  if (id==='pronostici') renderPronostici();
+  if (id==='pronostici') { const g = trovaGiornataDaAprire(); if (g) currentGiornata = g; renderPronostici(); }
   if (id==='risultati') renderRisultati();
   if (id==='eliminazione') renderKnockout();
   if (id==='calendario') renderCalendario();
   if (id==='altrui') { loadPronosticiAltrui().then(renderAltrui); }
   if (id==='profilo') renderProfilo();
   if (id==='admin' && isAdmin) { renderAdminSetup(); renderAdminGiocatori(); }
+}
+
+// Trova la prima giornata (fase a gironi o eliminazione diretta) che ha partite
+// selezionate dall'admin e non ancora tutte concluse: è quella su cui il
+// giocatore ha effettivamente qualcosa da pronosticare in questo momento.
+function trovaGiornataDaAprire() {
+  const max = config.giornate || 7;
+  for (let g = 1; g <= max; g++) {
+    const gKey = 'g' + g;
+    const selG = selezione[gKey] || {};
+    const selMids = Object.keys(selG).filter(k => selG[k]);
+    if (!selMids.length) continue; // nessuna partita ancora aperta per questa giornata
+    const ris = risultati[gKey] || {};
+    const tutteBloccate = selMids.every(mid => { const r = ris[mid]; return r && r.h != null && r.a != null; });
+    if (!tutteBloccate) return g;
+  }
+  return null; // nessuna giornata attualmente aperta: resta sull'ultima visualizzata
 }
 
 // ══════════════════════════════════════════════════
