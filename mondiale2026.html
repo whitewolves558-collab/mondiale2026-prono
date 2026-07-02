@@ -943,6 +943,21 @@ const PARTITE_MONDIALE = {
   }
 };
 
+// Le 48 squadre qualificate al Mondiale 2026 (ordine alfabetico) — usate per i
+// menu a tendina nell'inserimento manuale delle partite della fase a eliminazione diretta
+const SQUADRE_MONDIALE = [
+  'Algeria','Arabia Saudita','Argentina','Australia','Austria','Belgio',
+  'Bosnia-Erzegovina','Brasile','Canada','Capo Verde','Colombia','Corea del Sud',
+  "Costa d'Avorio",'Croazia','Curaçao','Ecuador','Egitto','Francia','Germania',
+  'Ghana','Giappone','Giordania','Haiti','Inghilterra','Iran','Iraq','Marocco',
+  'Messico','Norvegia','Nuova Zelanda','Olanda','Panama','Paraguay','Portogallo',
+  'Qatar','R.D. del Congo','Rep. Ceca','Scozia','Senegal','Spagna','Stati Uniti',
+  'Sudafrica','Svezia','Svizzera','Tunisia','Turchia','Uruguay','Uzbekistan'
+];
+
+// Numero di partite atteso per ogni giornata della fase a eliminazione diretta
+const KO_NUM_PARTITE = { 4: 8, 5: 4, 6: 2, 7: 1 }; // 4=Ottavi 5=Quarti 6=Semifinali 7=Finale
+
 // Helper: restituisce le partite da Firebase o dal precaricato come fallback
 function getPartite(gKey) {
   const fb = partite[gKey];
@@ -2348,6 +2363,14 @@ function renderPartiteEditor() {
   const mids = Object.keys(existing);
   const numSel = Object.keys(selG).filter(k=>selG[k]).length;
 
+  // ── FASE A ELIMINAZIONE DIRETTA (Ottavi, Quarti, Semifinali, Finale) ──
+  // Le squadre non sono note in anticipo: l'admin inserisce le partite a mano
+  // scegliendo le due squadre da un menu a tendina con tutte le 48 nazionali.
+  if (currentGiornataAdmin >= 4) {
+    renderPartiteEditorKO(gKey, existing);
+    return;
+  }
+
   // Pulsante carica dal Mondiale
   let html = `<div style="margin-bottom:14px">
     <button class="btn btn-outline btn-sm" onclick="caricaPartiteMondiale(${currentGiornataAdmin})" style="width:100%">
@@ -2427,6 +2450,7 @@ async function salvaSelezione(gKey) {
 }
 
 function addPartita() {
+  if (currentGiornataAdmin >= 4) { addPartitaKO(); return; }
   const gKey='g'+currentGiornataAdmin;
   const existing=getPartite(gKey);
   const newId='m_'+(Date.now()%100000);
@@ -2436,8 +2460,131 @@ function addPartita() {
 }
 
 async function savePartite() {
+  if (currentGiornataAdmin >= 4) { await savePartiteKO(); return; }
   document.getElementById('partite-msg').innerHTML='<div class="msg msg-info">Usa il pulsante "Carica le 24 partite del Mondiale" per caricare le partite ufficiali, poi seleziona le 10.</div>';
   setTimeout(()=>document.getElementById('partite-msg').innerHTML='',5000);
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN – PARTITE FASE A ELIMINAZIONE DIRETTA (giornata >= 4)
+// Inserimento manuale con menu a tendina sulle 48 nazionali
+// ══════════════════════════════════════════════════
+function addPartitaKO() {
+  const gKey='g'+currentGiornataAdmin;
+  const existing=getPartite(gKey);
+  const newId='m_'+(Date.now()%100000);
+  existing[newId]={h:'',a:'',gruppo:GIORNATA_LABELS[currentGiornataAdmin]||'',data:''};
+  partite[gKey]=existing;
+  renderPartiteEditor();
+}
+
+function removePartitaKO(mid) {
+  const gKey='g'+currentGiornataAdmin;
+  const existing=getPartite(gKey);
+  delete existing[mid];
+  partite[gKey]=existing;
+  renderPartiteEditor();
+}
+
+function updateMatchTeamKO(mid, field, value) {
+  const gKey='g'+currentGiornataAdmin;
+  const existing=getPartite(gKey);
+  if (!existing[mid]) return;
+  existing[mid][field]=value;
+  partite[gKey]=existing;
+  const preview=document.getElementById('preview_'+mid);
+  if (preview) {
+    const m=existing[mid];
+    preview.textContent = (m.h||'?') + ' vs ' + (m.a||'?');
+  }
+}
+
+function updateMatchDataKO(mid, value) {
+  const gKey='g'+currentGiornataAdmin;
+  const existing=getPartite(gKey);
+  if (!existing[mid]) return;
+  existing[mid].data=value;
+  partite[gKey]=existing;
+}
+
+function renderPartiteEditorKO(gKey, existing) {
+  const notaEl = document.getElementById('partite-fase-nota');
+  const round = currentGiornataAdmin;
+  const label = GIORNATA_LABELS[round] || 'Fase eliminatoria';
+  const attese = KO_NUM_PARTITE[round] || '?';
+  if (notaEl) {
+    notaEl.innerHTML = '📋 <strong>'+label+'</strong> — inserisci le '+attese+' partite scegliendo le squadre dai menu a tendina (48 nazionali disponibili). Nessuna partita è precaricata: le squadre dipendono dai risultati della fase a gironi.';
+    notaEl.style.display = 'block';
+  }
+  const mids = Object.keys(existing);
+  const opzioniBase = ['<option value="">— Seleziona —</option>'].concat(
+    SQUADRE_MONDIALE.map(t=>`<option value="${t}">${t}</option>`)
+  ).join('');
+
+  let html = `<div class="msg msg-info" style="margin-bottom:12px">
+    ${label}: previste <strong>${attese}</strong> partite. Inserite: <strong>${mids.length}</strong>
+  </div>`;
+
+  if (!mids.length) {
+    html += `<div style="color:var(--grigio);font-family:Oswald;font-size:0.8rem;margin-bottom:10px">Nessuna partita inserita. Usa "➕ Aggiungi Partita" qui sotto.</div>`;
+  } else {
+    mids.forEach(mid => {
+      const m = existing[mid];
+      const selH = m.h ? opzioniBase.replace(`value="${m.h}"`, `value="${m.h}" selected`) : opzioniBase;
+      const selA = m.a ? opzioniBase.replace(`value="${m.a}"`, `value="${m.a}" selected`) : opzioniBase;
+      html += `<div style="padding:10px 12px;background:rgba(201,168,76,0.03);border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <select onchange="updateMatchTeamKO('${mid}','h',this.value)" style="flex:1;background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:Oswald;font-size:0.8rem;outline:none">${selH}</select>
+          <span style="color:var(--grigio);font-family:Oswald;font-size:0.75rem">vs</span>
+          <select onchange="updateMatchTeamKO('${mid}','a',this.value)" style="flex:1;background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:Oswald;font-size:0.8rem;outline:none">${selA}</select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="text" placeholder="es. 30 Giu" value="${m.data||''}" onchange="updateMatchDataKO('${mid}',this.value)" style="flex:1;background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;color:var(--text);font-family:Oswald;font-size:0.75rem;outline:none">
+          <button class="btn btn-danger btn-sm" onclick="removePartitaKO('${mid}')">🗑️</button>
+        </div>
+        <div id="preview_${mid}" style="margin-top:6px;font-family:Oswald;font-size:0.72rem;color:var(--grigio)">${m.h||'?'} vs ${m.a||'?'}</div>
+      </div>`;
+    });
+  }
+
+  document.getElementById('partite-editor').innerHTML = html;
+}
+
+async function savePartiteKO() {
+  const gKey='g'+currentGiornataAdmin;
+  const existing=getPartite(gKey);
+  const mids=Object.keys(existing);
+  if (!mids.length) {
+    document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">Aggiungi almeno una partita prima di salvare.</div>';
+    setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3000);
+    return;
+  }
+  for (const mid of mids) {
+    const m = existing[mid];
+    if (!m.h || !m.a) {
+      document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">Ogni partita deve avere entrambe le squadre selezionate.</div>';
+      setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3500);
+      return;
+    }
+    if (m.h === m.a) {
+      document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">Una partita non può avere la stessa squadra sia in casa che in trasferta.</div>';
+      setTimeout(()=>document.getElementById('partite-msg').innerHTML='',3500);
+      return;
+    }
+  }
+  try {
+    await fbSet('/partite/'+gKey, existing);
+    // In fase eliminatoria tutte le partite inserite sono da pronosticare (nessuna selezione di 10)
+    const selAll={};
+    mids.forEach(mid=>selAll[mid]=true);
+    await fbSet('/selezione/'+gKey, selAll);
+    selezione[gKey]=selAll;
+    document.getElementById('partite-msg').innerHTML=`<div class="msg msg-ok">✅ ${mids.length} partite salvate! I giocatori potranno pronosticarle tutte.</div>`;
+    setTimeout(()=>document.getElementById('partite-msg').innerHTML='',4000);
+    renderPartiteEditor();
+  } catch(e) {
+    document.getElementById('partite-msg').innerHTML='<div class="msg msg-err">❌ Errore salvataggio</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════
