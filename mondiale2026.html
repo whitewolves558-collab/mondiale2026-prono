@@ -2033,159 +2033,30 @@ const FASCE_PRIMO_GOL = ['0-15','16-30','31-45','46-60','61-75','76-90'];
 function renderKoRound() {
   const matches=((koData||{})[currentKoRound])||{};
   const ris=((koData||{})[currentKoRound+'_ris'])||{};
-  const mio=(((pronostici||{})['ko_'+currentKoRound])||{})[currentUser]||{};
-  const hasRis=Object.keys(ris).length>0;
   const mids=Object.keys(matches);
-  const conExtra = KO_ROUND_CON_EXTRA.includes(currentKoRound);
 
   if (!mids.length) {
     document.getElementById('ko-content').innerHTML='<div style="text-align:center;color:var(--grigio);padding:20px;font-family:Oswald;font-size:0.85rem">Nessuna partita configurata</div>';
     return;
   }
 
-  // Controlla se i pronostici per questo turno sono aperti
-  // L'admin li apre da Admin → Knockout → pulsante "Apri pronostici"
-  const pronosticAperti = (koData['prono_aperto_'+currentKoRound] === true) || isAdmin;
-  const modalitaSolaLettura = !pronosticAperti && !hasRis;
-
+  // Sezione SOLO IN LETTURA: mostra l'accoppiamento tra giocatori e, se disponibile,
+  // il risultato. I pronostici sui Mondiali si inseriscono nella sezione "I miei pronostici".
   let html='<div class="bracket-round"><div class="bracket-round-title">'+KO_LABELS[currentKoRound]+'</div>';
-
-  // Modalità tabellone (sola lettura)
-  if (modalitaSolaLettura) {
-    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">📋 Tabellone accoppiamenti — i pronostici apriranno a breve</div>';
-    mids.forEach(mid=>{
-      const m=matches[mid]; const r=ris[mid]||{};
-      const done = r.h!=null && r.a!=null;
-      html += '<div class="bracket-match">'
-        + '<div class="bm-player">'+( m.h||'TBD')+'</div>'
-        + '<div style="font-family:Cinzel;font-size:0.85rem;color:var(--oro2);min-width:50px;text-align:center">'
-        + (done ? r.h+'–'+r.a : 'vs')
-        + '</div>'
-        + '<div class="bm-player right">'+(m.a||'TBD')+'</div>'
-        + '</div>';
-    });
-    html += '</div>';
-    document.getElementById('ko-content').innerHTML = html;
-    return;
-  }
+  html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">📋 Prossimo avversario — tabellone accoppiamenti</div>';
   mids.forEach(mid=>{
-    const m=matches[mid]; const r=ris[mid]||{}; const mpr=mio[mid]||{};
-    let badge='';
-    if (r.h!=null&&r.a!=null&&mpr.h!=null&&mpr.a!=null) {
-      if (parseInt(mpr.h)===parseInt(r.h)&&parseInt(mpr.a)===parseInt(r.a)) badge='<span class="prono-result prono-exact">+3</span>';
-      else { const sr=r.h>r.a?'1':(r.h===r.a?'X':'2'); const sm=mpr.h>mpr.a?'1':(mpr.h===mpr.a?'X':'2'); badge=sr===sm?'<span class="prono-result prono-sign">+1</span>':'<span class="prono-result prono-wrong">0</span>'; }
-    }
-    const rVal=r.h!=null?r.h+'–'+r.a:'?–?';
-    html+='<div class="bracket-match">'
-      +'<div class="bm-player">'+(m.h||'TBD')+'</div>'
-      +'<div class="bm-score">'
-      +'<input type="number" min="0" max="99" id="kph_'+mid+'" value="'+(mpr.h!=null?mpr.h:'')+'" '+(hasRis?'disabled':'')+' oninput="autoAdvance(this,\'kpa_'+mid+'\')" onkeydown="handleBackspace(event,this,null)">'
-      +'<span style="color:var(--grigio)">–</span>'
-      +'<input type="number" min="0" max="99" id="kpa_'+mid+'" value="'+(mpr.a!=null?mpr.a:'')+'" '+(hasRis?'disabled':'')+' oninput="autoAdvance(this,null)" onkeydown="handleBackspace(event,this,\'kph_'+mid+'\')">'
-      +(r.h!=null?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:4px">('+rVal+')</span>':'')
-      +'</div>'
-      +'<div class="bm-player right">'+(m.a||'TBD')+'</div>'
-      +'</div>'
-      +(badge?'<div style="text-align:center;margin-bottom:8px">'+badge+'</div>':'');
-
-    // Pronostici extra per quarti/semi/finale
-    if (conExtra) {
-      const ex = mpr.extra||{};
-      const exRis = r.extra||{};
-      const lockedExtra = hasRis;
-      // Calcola badge extra
-      const badgeExtra = (k, val, risVal, pts) => {
-        if (!hasRis || !risVal || !val) return '';
-        return val===risVal
-          ? '<span class="extra-badge extra-badge-ok">+'+pts+'</span>'
-          : '<span class="extra-badge extra-badge-err">✗</span>';
-      };
-      html += '<div class="extra-prono-box">'
-        +'<div class="extra-prono-title">⭐ Pronostici Extra</div>'
-        // Risultato esatto 1° tempo
-        +'<div class="extra-field"><span class="extra-label">Risultato esatto 1° tempo (+3)</span>'
-        +'<div class="extra-score-row">'
-        +'<input type="number" min="0" max="20" id="ex_pt1h_'+mid+'" value="'+(ex.pt1h!=null?ex.pt1h:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
-        +'<span style="color:var(--grigio);font-family:Oswald">–</span>'
-        +'<input type="number" min="0" max="20" id="ex_pt1a_'+mid+'" value="'+(ex.pt1a!=null?ex.pt1a:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
-        +(exRis.pt1h!=null?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:6px">('+exRis.pt1h+'-'+exRis.pt1a+')</span>':'')
-        +badgeExtra('pt1', (ex.pt1h!=null&&ex.pt1a!=null)?ex.pt1h+'-'+ex.pt1a:null, (exRis.pt1h!=null&&exRis.pt1a!=null)?exRis.pt1h+'-'+exRis.pt1a:null, 3)
-        +'</div></div>'
-        // Squadra che segna per prima
-        +'<div class="extra-field"><span class="extra-label">Squadra che segna per prima (+1)</span>'
-        +'<select id="ex_sqfirst_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
-        +'<option value="">— Seleziona —</option>'
-        +'<option value="'+(m.h||'')+('"'+(ex.sqFirst===(m.h||'')?'selected':''))+'>'+(m.h||'Casa')+'</option>'
-        +'<option value="'+(m.a||'')+('"'+(ex.sqFirst===(m.a||'')?'selected':''))+'>'+(m.a||'Ospite')+'</option>'
-        +'<option value="nessuno"'+(ex.sqFirst==='nessuno'?' selected':'')+'>Nessuno (0-0)</option>'
-        +'</select>'
-        +(exRis.sqFirst?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.sqFirst+')</span>':'')
-        +badgeExtra('sqFirst', ex.sqFirst, exRis.sqFirst, 1)
-        +'</div>'
-        // Marcatore primo gol
-        +'<div class="extra-field"><span class="extra-label">Marcatore primo gol (+1)</span>'
-        +'<input type="text" id="ex_marcatore_'+mid+'" class="extra-text-input" value="'+(ex.marcatore||'')+'" '+(lockedExtra?'disabled':'')+' placeholder="Nome giocatore">'
-        +(exRis.marcatore?'<div style="font-family:Oswald;font-size:0.72rem;color:var(--grigio);margin-top:2px">Ris: '+exRis.marcatore+'</div>':'')
-        +badgeExtra('marcatore', ex.marcatore?ex.marcatore.toLowerCase().trim():null, exRis.marcatore?exRis.marcatore.toLowerCase().trim():null, 1)
-        +'</div>'
-        // Rigori
-        +'<div class="extra-field"><span class="extra-label">Si va ai rigori? (+1)</span>'
-        +'<select id="ex_rigori_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
-        +'<option value="">— Seleziona —</option>'
-        +'<option value="si"'+(ex.rigori==='si'?' selected':'')+'>Sì</option>'
-        +'<option value="no"'+(ex.rigori==='no'?' selected':'')+'>No</option>'
-        +'</select>'
-        +(exRis.rigori?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.rigori+')</span>':'')
-        +badgeExtra('rigori', ex.rigori, exRis.rigori, 1)
-        +'</div>'
-        // Fascia primo gol
-        +'<div class="extra-field"><span class="extra-label">Fascia minuto primo gol (+1)</span>'
-        +'<select id="ex_fascia_'+mid+'" class="extra-select" '+(lockedExtra?'disabled':'')+'>'
-        +'<option value="">— Seleziona —</option>'
-        +FASCE_PRIMO_GOL.map(f=>'<option value="'+f+'"'+(ex.fascia===f?' selected':'')+'>'+f+'\'</option>').join('')
-        +'</select>'
-        +(exRis.fascia?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio)"> (Ris: '+exRis.fascia+'\')</span>':'')
-        +badgeExtra('fascia', ex.fascia, exRis.fascia, 1)
-        +'</div>'
-        +'</div>';
-    }
+    const m=matches[mid]; const r=ris[mid]||{};
+    const done = r.h!=null && r.a!=null;
+    html += '<div class="bracket-match">'
+      + '<div class="bm-player">'+(m.h||'TBD')+'</div>'
+      + '<div style="font-family:Cinzel;font-size:0.85rem;color:var(--oro2);min-width:50px;text-align:center">'
+      + (done ? r.h+'–'+r.a : 'vs')
+      + '</div>'
+      + '<div class="bm-player right">'+(m.a||'TBD')+'</div>'
+      + '</div>';
   });
-  if (!hasRis) html+='<button class="btn btn-gold btn-block mt8" onclick="saveKoPro()">💾 Salva</button>';
-  html+='</div>';
-  document.getElementById('ko-content').innerHTML=html;
-}
-
-async function saveKoPro() {
-  const gKey='ko_'+currentKoRound;
-  const matches=((koData||{})[currentKoRound])||{};
-  const conExtra = KO_ROUND_CON_EXTRA.includes(currentKoRound);
-  const data={};
-  Object.keys(matches).forEach(mid=>{
-    const hEl=document.getElementById('kph_'+mid); const aEl=document.getElementById('kpa_'+mid);
-    if (hEl&&aEl&&hEl.value!==''&&aEl.value!=='') {
-      const entry = {h:parseInt(hEl.value),a:parseInt(aEl.value)};
-      if (conExtra) {
-        const pt1h=document.getElementById('ex_pt1h_'+mid)?.value;
-        const pt1a=document.getElementById('ex_pt1a_'+mid)?.value;
-        const sqFirst=document.getElementById('ex_sqfirst_'+mid)?.value;
-        const marcatore=document.getElementById('ex_marcatore_'+mid)?.value?.trim();
-        const rigori=document.getElementById('ex_rigori_'+mid)?.value;
-        const fascia=document.getElementById('ex_fascia_'+mid)?.value;
-        entry.extra = {};
-        if (pt1h!==''&&pt1a!=='') { entry.extra.pt1h=parseInt(pt1h); entry.extra.pt1a=parseInt(pt1a); }
-        if (sqFirst) entry.extra.sqFirst=sqFirst;
-        if (marcatore) entry.extra.marcatore=marcatore;
-        if (rigori) entry.extra.rigori=rigori;
-        if (fascia) entry.extra.fascia=fascia;
-      }
-      data[mid]=entry;
-    }
-  });
-  try {
-    await fbSet('/pronostici/'+gKey+'/'+currentUser, data);
-    pronostici[gKey]=pronostici[gKey]||{}; pronostici[gKey][currentUser]=data;
-    mostraNotificaInApp('✅ Salvato!','Pronostici '+KO_LABELS[currentKoRound]+' salvati!');
-  } catch(e) { alert('❌ Errore'); }
+  html += '</div>';
+  document.getElementById('ko-content').innerHTML = html;
 }
 
 
