@@ -2139,9 +2139,86 @@ function setKoRound(r) { currentKoRound=r; renderKnockout(); }
 const KO_ROUND_CON_EXTRA = ['quarti','semifinali','finale'];
 const FASCE_PRIMO_GOL = ['0-15','16-30','31-45','46-60','61-75','76-90'];
 
+// Corrispondenza tra il turno del tabellone giocatori e la giornata delle
+// partite reali dei Mondiali usata per calcolare i punti pronostico
+const ROUND_TO_GNUM = { ottavi:4, quarti:5, semifinali:6, finale:7 };
+const NEXT_ROUND    = { ottavi:'quarti', quarti:'semifinali', semifinali:'finale' };
+
+// Punti totali accumulati da un giocatore dall'inizio del Mondiale fino alla
+// giornata indicata (inclusa): usato come criterio finale di spareggio
+function calcPuntiTotaliDalInizio(p, finoAGNum) {
+  let tot = 0;
+  for (let g = 1; g <= finoAGNum; g++) tot += calcPuntiGiornata(p, 'g'+g).pt;
+  return tot;
+}
+
+// Punti dai "Pronostici Extra" (1° tempo, squadra primo gol, marcatore, rigori,
+// fascia orario) di un giocatore per una giornata: usati come spareggio da Quarti in poi
+function calcPuntiExtraGiornata(p, gKey) {
+  const ris = risultati[gKey] || {};
+  const pros = pronostici[gKey] || {};
+  const selG = selezione[gKey] || {};
+  const selMids = Object.keys(selG).filter(k => selG[k]);
+  const mio = pros[p] || {};
+  let pt = 0;
+  selMids.forEach(mid => {
+    const r = ris[mid]; const m = mio[mid];
+    if (!r || !r.extra || !m || !m.extra) return;
+    const rex = r.extra, mex = m.extra;
+    if (rex.pt1h!=null && rex.pt1a!=null && mex.pt1h!=null && mex.pt1a!=null) {
+      const rh=parseInt(rex.pt1h), ra=parseInt(rex.pt1a), mh=parseInt(mex.pt1h), ma=parseInt(mex.pt1a);
+      if (mh===rh && ma===ra) pt+=3;
+      else {
+        const segnoR = rh>ra?'1':(rh===ra?'X':'2');
+        const segnoM = mh>ma?'1':(mh===ma?'X':'2');
+        if (segnoR===segnoM) pt+=1;
+      }
+    }
+    if (rex.sqFirst && mex.sqFirst && rex.sqFirst===mex.sqFirst) pt+=1;
+    if (rex.marcatore && mex.marcatore && rex.marcatore.toLowerCase().trim()===mex.marcatore.toLowerCase().trim()) pt+=1;
+    if (rex.rigori && mex.rigori && rex.rigori===mex.rigori) pt+=1;
+    if (rex.fascia && mex.fascia && rex.fascia===mex.fascia) pt+=1;
+  });
+  return pt;
+}
+
+// Determina il vincitore di uno scontro diretto del tabellone.
+// Ottavi (senza extra):       punti turno → RE turno → totale Mondiale
+// Quarti/Semi/Finale (extra): punti turno → punti extra → RE turno → totale Mondiale
+function calcolaVincitoreKo(giocatoreH, giocatoreA, gNumRound) {
+  const gKey = 'g' + gNumRound;
+  const conExtra = gNumRound >= 5;
+  const ph = calcPuntiGiornata(giocatoreH, gKey);
+  const pa = calcPuntiGiornata(giocatoreA, gKey);
+  let vincitore = null, motivo = 'punti_turno';
+
+  if (ph.pt !== pa.pt) {
+    vincitore = ph.pt > pa.pt ? giocatoreH : giocatoreA;
+    return { vincitore, motivo, ph, pa };
+  }
+
+  if (conExtra) {
+    const exH = calcPuntiExtraGiornata(giocatoreH, gKey);
+    const exA = calcPuntiExtraGiornata(giocatoreA, gKey);
+    if (exH !== exA) {
+      return { vincitore: exH > exA ? giocatoreH : giocatoreA, motivo: 'extra_turno', ph, pa, exH, exA };
+    }
+  }
+
+  if (ph.re !== pa.re) {
+    vincitore = ph.re > pa.re ? giocatoreH : giocatoreA;
+    motivo = 're_turno';
+  } else {
+    const totH = calcPuntiTotaliDalInizio(giocatoreH, gNumRound);
+    const totA = calcPuntiTotaliDalInizio(giocatoreA, gNumRound);
+    if (totH !== totA) { vincitore = totH > totA ? giocatoreH : giocatoreA; motivo = 'totale_mondiale'; }
+    else motivo = 'pareggio_totale';
+  }
+  return { vincitore, motivo, ph, pa };
+}
+
 function renderKoRound() {
   const matches=((koData||{})[currentKoRound])||{};
-  const ris=((koData||{})[currentKoRound+'_ris'])||{};
   const mids=Object.keys(matches);
 
   if (!mids.length) {
@@ -2149,23 +2226,114 @@ function renderKoRound() {
     return;
   }
 
-  // Sezione SOLO IN LETTURA: mostra l'accoppiamento tra giocatori e, se disponibile,
-  // il risultato. I pronostici sui Mondiali si inseriscono nella sezione "I miei pronostici".
+  const gNum = ROUND_TO_GNUM[currentKoRound];
+  const gKey = 'g' + gNum;
+  const completata = giornataCompletata(gKey);
+  const inCorso = giornataInCorso(gKey);
+  const nextRound = NEXT_ROUND[currentKoRound];
+
   let html='<div class="bracket-round"><div class="bracket-round-title">'+KO_LABELS[currentKoRound]+'</div>';
-  html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">📋 Prossimo avversario — tabellone accoppiamenti</div>';
+
+  if (completata) {
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">🏁 Turno concluso — punteggi definitivi e vincitori</div>';
+  } else if (inCorso) {
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">⏳ Turno in corso — punteggi parziali, live</div>';
+  } else {
+    html += '<div class="msg msg-info" style="margin-bottom:12px;font-size:0.78rem">📋 Prossimo avversario — tabellone accoppiamenti</div>';
+  }
+
+  const vincitoriPerAvanzamento = [];
+  let pareggioIrrisolto = false;
+
   mids.forEach(mid=>{
-    const m=matches[mid]; const r=ris[mid]||{};
-    const done = r.h!=null && r.a!=null;
-    html += '<div class="bracket-match">'
-      + '<div class="bm-player">'+(m.h||'TBD')+'</div>'
-      + '<div style="font-family:Cinzel;font-size:0.85rem;color:var(--oro2);min-width:50px;text-align:center">'
-      + (done ? r.h+'–'+r.a : 'vs')
+    const m=matches[mid];
+    const giocaH = !!m.h, giocaA = !!m.a;
+    let ph={pt:0,re:0}, pa={pt:0,re:0}, vincitore=null, motivo=null;
+    if (giocaH && giocaA && (completata || inCorso)) {
+      const calc = calcolaVincitoreKo(m.h, m.a, gNum);
+      ph=calc.ph; pa=calc.pa;
+      if (completata) { vincitore=calc.vincitore; motivo=calc.motivo; }
+    }
+    if (completata) {
+      vincitoriPerAvanzamento.push(vincitore);
+      if (!vincitore) pareggioIrrisolto = true;
+    }
+
+    html += '<div class="bracket-match" style="flex-direction:column;align-items:stretch;gap:6px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<div class="bm-player" style="'+(vincitore===m.h?'color:var(--oro2);font-weight:700':'')+'">'+(m.h||'TBD')+(vincitore===m.h?' 🏆':'')+'</div>'
+      + '<div style="font-family:Cinzel;font-size:0.85rem;color:var(--oro2);min-width:60px;text-align:center">'
+      + ((giocaH&&giocaA&&(completata||inCorso)) ? ph.pt+' – '+pa.pt : 'vs')
       + '</div>'
-      + '<div class="bm-player right">'+(m.a||'TBD')+'</div>'
+      + '<div class="bm-player right" style="'+(vincitore===m.a?'color:var(--oro2);font-weight:700':'')+'">'+(vincitore===m.a?'🏆 ':'')+(m.a||'TBD')+'</div>'
       + '</div>';
+    if ((giocaH&&giocaA) && (completata||inCorso)) {
+      html += '<div style="font-family:Oswald;font-size:0.68rem;color:var(--grigio);text-align:center">'
+        + 'Risultati esatti: '+ph.re+' – '+pa.re
+        + '</div>';
+    }
+    if (completata && motivo && motivo!=='punti_turno') {
+      const testoMotivo = motivo==='extra_turno' ? '⚖️ Parità punti turno — decisi i punti dei Pronostici Extra'
+        : motivo==='re_turno' ? '⚖️ Parità punti turno — decisi i risultati esatti indovinati'
+        : motivo==='totale_mondiale' ? '⚖️ Ulteriore parità — deciso dal totale punti dall\'inizio del Mondiale'
+        : '⚠️ Parità totale, anche nel punteggio complessivo: serve una decisione manuale';
+      html += '<div style="font-family:Oswald;font-size:0.68rem;color:var(--oro);text-align:center">'+testoMotivo+'</div>';
+    }
+    html += '</div>';
   });
+
+  // Pulsante per generare il turno successivo con i vincitori (solo admin, turno concluso)
+  if (isAdmin && completata) {
+    if (!nextRound) {
+      const campione = mids.length===1 ? vincitoriPerAvanzamento[0] : null;
+      if (campione) html += '<div class="msg msg-info" style="margin-top:12px;text-align:center;font-family:Cinzel;font-size:1rem;color:var(--oro2)">🏆 Campione del Mondiale (torneo): '+campione+'</div>';
+    } else if (pareggioIrrisolto) {
+      html += '<div class="msg msg-err" style="margin-top:12px">⚠️ C\'è una parità totale irrisolvibile in almeno uno scontro: risolvi manualmente prima di generare il turno successivo.</div>';
+    } else {
+      html += '<button class="btn btn-gold btn-block mt8" onclick="generaProssimoTurnoKo()">🏆 Genera '+KO_LABELS[nextRound]+' con i vincitori</button>';
+    }
+  }
+
   html += '</div>';
   document.getElementById('ko-content').innerHTML = html;
+}
+
+async function generaProssimoTurnoKo() {
+  const round = currentKoRound;
+  const nextRound = NEXT_ROUND[round];
+  if (!nextRound) { alert('La Finale non ha un turno successivo.'); return; }
+  const gNum = ROUND_TO_GNUM[round];
+  const gKey = 'g' + gNum;
+  if (!giornataCompletata(gKey)) { alert('Questo turno non è ancora concluso: mancano dei risultati.'); return; }
+  const matches = koData[round] || {};
+  const mids = Object.keys(matches);
+  if (!mids.length) { alert('Nessun accoppiamento presente per questo turno.'); return; }
+
+  const vincitori = [];
+  for (const mid of mids) {
+    const m = matches[mid];
+    if (!m.h || !m.a) { alert('C\'è ancora una squadra/giocatore da definire in "'+(m.h||'?')+' vs '+(m.a||'?')+'".'); return; }
+    const { vincitore } = calcolaVincitoreKo(m.h, m.a, gNum);
+    if (!vincitore) { alert('Parità totale irrisolvibile tra '+m.h+' e '+m.a+'. Risolvi manualmente prima di continuare.'); return; }
+    vincitori.push(vincitore);
+  }
+
+  if (Object.keys(koData[nextRound]||{}).length) {
+    if (!confirm('Il turno "'+KO_LABELS[nextRound]+'" contiene già degli accoppiamenti: sovrascriverli con i nuovi vincitori?')) return;
+  }
+
+  // Accoppiamento adiacente: vincente 1 vs vincente 2, vincente 3 vs vincente 4, ecc.
+  const newMatches = {};
+  for (let i=0; i<vincitori.length; i+=2) {
+    newMatches['k'+(i/2+1)] = { h: vincitori[i], a: vincitori[i+1] || null };
+  }
+
+  try {
+    await fbSet('/knockout/'+nextRound, newMatches);
+    koData[nextRound] = newMatches;
+    currentKoRound = nextRound;
+    renderKnockout();
+  } catch(e) { alert('❌ Errore durante il salvataggio del turno successivo.'); }
 }
 
 
