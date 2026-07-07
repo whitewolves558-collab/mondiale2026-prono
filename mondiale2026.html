@@ -1960,16 +1960,26 @@ function renderPronostici() {
           ? '<span class="extra-badge extra-badge-ok">+'+pts+'</span>'
           : '<span class="extra-badge extra-badge-err">✗</span>';
       };
+      // Risultato 1° tempo: +3 se esatto, +1 se solo il segno (1/X/2) è corretto
+      const badgePt1 = (mh, ma, rh, ra) => {
+        if (!locked || rh==null || ra==null || mh==null || ma==null) return '';
+        if (mh===rh && ma===ra) return '<span class="extra-badge extra-badge-ok">+3</span>';
+        const segnoM = mh>ma?'1':(mh===ma?'X':'2');
+        const segnoR = rh>ra?'1':(rh===ra?'X':'2');
+        return segnoM===segnoR
+          ? '<span class="extra-badge extra-badge-ok">+1</span>'
+          : '<span class="extra-badge extra-badge-err">✗</span>';
+      };
       html += '<div class="extra-prono-box">'
         +'<div class="extra-prono-title">⭐ Pronostici Extra</div>'
         // Risultato esatto 1° tempo
-        +'<div class="extra-field"><span class="extra-label">Risultato esatto 1° tempo (+3)</span>'
+        +'<div class="extra-field"><span class="extra-label">Risultato 1° tempo (+3 esatto, +1 segno)</span>'
         +'<div class="extra-score-row">'
         +'<input type="number" min="0" max="20" id="ex_pt1h_'+mid+'" value="'+(ex.pt1h!=null?ex.pt1h:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
         +'<span style="color:var(--grigio);font-family:Oswald">–</span>'
         +'<input type="number" min="0" max="20" id="ex_pt1a_'+mid+'" value="'+(ex.pt1a!=null?ex.pt1a:'')+'" '+(lockedExtra?'disabled':'')+' placeholder="0">'
         +(exRis.pt1h!=null?'<span style="font-family:Oswald;font-size:0.75rem;color:var(--grigio);margin-left:6px">('+exRis.pt1h+'-'+exRis.pt1a+')</span>':'')
-        +badgeExtra((ex.pt1h!=null&&ex.pt1a!=null)?ex.pt1h+'-'+ex.pt1a:null, (exRis.pt1h!=null&&exRis.pt1a!=null)?exRis.pt1h+'-'+exRis.pt1a:null, 3)
+        +badgePt1(ex.pt1h!=null?parseInt(ex.pt1h):null, ex.pt1a!=null?parseInt(ex.pt1a):null, exRis.pt1h!=null?parseInt(exRis.pt1h):null, exRis.pt1a!=null?parseInt(exRis.pt1a):null)
         +'</div></div>'
         // Squadra che segna per prima
         +'<div class="extra-field"><span class="extra-label">Squadra che segna per prima (+1)</span>'
