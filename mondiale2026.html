@@ -805,6 +805,7 @@
           <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
           <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
           <button class="print-btn" onclick="mostraSelettoreGiornata()">📊 Pronostici Giornata</button>
+          <button class="print-btn" onclick="stampaPronosticiEliminazione()">🥊 Pronostici Quarti in poi (in gioco)</button>
         </div>
         <div id="selettore-giornata" style="display:none;margin-top:12px">
           <div class="input-group">
@@ -3565,6 +3566,106 @@ function stampaTutto() {
 }
 
 function closePrintOverlay() { const el=document.getElementById("print-overlay"); if(el) el.remove(); }
+// ══════════════════════════════════════════════════
+// STAMPA — Pronostici Fase Eliminazione (Quarti in poi, solo giocatori in gioco)
+// ══════════════════════════════════════════════════
+
+// Trova i giocatori ancora in corsa: quelli del turno più avanzato già generato
+// (Finale > Semifinali > Quarti). Se non è ancora stato generato nessun turno
+// dai Quarti in poi, non c'è nessuno da mostrare.
+function getGiocatoriAncoraInGioco() {
+  for (const r of ['finale','semifinali','quarti']) {
+    const m = (koData||{})[r] || {};
+    const ids = Object.keys(m);
+    if (ids.length) {
+      const set = new Set();
+      ids.forEach(id => { if (m[id].h) set.add(m[id].h); if (m[id].a) set.add(m[id].a); });
+      return Array.from(set);
+    }
+  }
+  return [];
+}
+
+function buildSezioneStampaGiornataKo(gNum, giocatori) {
+  const gKey = 'g' + gNum;
+  const par = getPartite(gKey);
+  const sel = selezione[gKey] || {};
+  const ris = risultati[gKey] || {};
+  const selMids = Object.keys(sel).filter(mid => sel[mid]);
+  if (!selMids.length) return '';
+
+  let html = '<h2 style="margin-top:26px;margin-bottom:10px;font-size:1.1rem;border-bottom:2px solid #0a2e1a;padding-bottom:4px">'+(GIORNATA_LABELS[gNum]||('Giornata '+gNum))+'</h2>';
+
+  selMids.forEach(mid => {
+    const m = par[mid] || {};
+    const r = ris[mid] || {};
+    const done = r.h != null && r.a != null;
+
+    html += '<div style="margin-bottom:18px;page-break-inside:avoid">';
+    html += '<div style="font-weight:bold;font-size:0.95rem;margin-bottom:2px">'+(m.h||'?')+' – '+(m.a||'?')
+      + (done ? '&nbsp;&nbsp;<span style="color:#1a7a42">('+r.h+'-'+r.a+')</span>' : '') + '</div>';
+    html += '<div style="color:#888;font-size:0.7rem;margin-bottom:6px">'+(m.gruppo||'')+(m.data?' · '+m.data:'')+'</div>';
+
+    html += '<table style="border-collapse:collapse;width:100%;font-size:0.72rem">';
+    html += '<thead><tr>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5;text-align:left">Giocatore</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Pronostico</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">1° Tempo</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Primo Gol</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Marcatore</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Rigori</th>'
+      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Fascia</th>'
+      + '</tr></thead><tbody>';
+
+    giocatori.slice().sort().forEach((p, idx) => {
+      const mio = ((pronostici[gKey] || {})[p] || {})[mid] || {};
+      const ex = mio.extra || {};
+      const hasPro = mio.h != null && mio.a != null;
+      const rowBg = idx % 2 === 0 ? '#fff' : '#fafafa';
+      html += '<tr style="background:'+rowBg+'">'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;font-weight:bold">'+p+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(hasPro ? mio.h+'-'+mio.a : '–')+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+((ex.pt1h!=null&&ex.pt1a!=null) ? ex.pt1h+'-'+ex.pt1a : '–')+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.sqFirst==='nessuno'?'Nessuno':(ex.sqFirst||'–'))+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.marcatore||'–')+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.rigori==='si'?'Sì':ex.rigori==='no'?'No':'–')+'</td>'
+        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.fascia ? ex.fascia+"'" : '–')+'</td>'
+        + '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+  });
+
+  return html;
+}
+
+function stampaPronosticiEliminazione() {
+  const giocatori = getGiocatoriAncoraInGioco();
+  if (!giocatori.length) {
+    alert('Nessun turno dai Quarti in poi è stato ancora generato: non ci sono giocatori da mostrare.');
+    return;
+  }
+
+  let html = '<div style="font-family:serif;padding:16px;color:#000">';
+  html += '<h1 style="text-align:center;font-size:1.3rem;margin-bottom:4px">'+(config.nome||'Mondiale 2026')+'</h1>';
+  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:8px;font-weight:normal">Pronostici Fase a Eliminazione — Quarti in poi</h2>';
+  html += '<div style="text-align:center;font-size:0.78rem;color:#555;margin-bottom:10px">Giocatori ancora in gioco ('+giocatori.length+'): '+giocatori.slice().sort().join(', ')+'</div>';
+
+  let trovataSezione = false;
+  [5, 6, 7].forEach(gNum => {
+    const sez = buildSezioneStampaGiornataKo(gNum, giocatori);
+    if (sez) { html += sez; trovataSezione = true; }
+  });
+
+  if (!trovataSezione) {
+    html += '<div style="text-align:center;color:#888;margin-top:20px">Nessuna partita ancora caricata/selezionata per Quarti, Semifinali o Finale.</div>';
+  }
+
+  html += '<div style="margin-top:16px;font-size:0.7rem;color:#888">"–" indica un campo non ancora pronosticato o non applicabile.</div>';
+  html += '</div>';
+  apriFinestraStampa(html);
+}
+
 function apriFinestraStampa(contenuto) {
   // Crea un div overlay di stampa invece di aprire una nuova finestra
   const existing = document.getElementById('print-overlay');
