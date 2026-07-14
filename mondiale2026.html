@@ -805,7 +805,7 @@
           <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
           <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
           <button class="print-btn" onclick="mostraSelettoreGiornata()">📊 Pronostici Giornata</button>
-          <button class="print-btn" onclick="stampaPronosticiEliminazione()">🥊 Pronostici Quarti in poi (in gioco)</button>
+          <button class="print-btn" onclick="stampaPronosticiEliminazione()">🥊 Riepilogo Fase Eliminazione (in gioco)</button>
         </div>
         <div id="selettore-giornata" style="display:none;margin-top:12px">
           <div class="input-group">
@@ -3588,6 +3588,7 @@ function getGiocatoriAncoraInGioco() {
 
 function buildSezioneStampaGiornataKo(gNum, giocatori) {
   const gKey = 'g' + gNum;
+  const conExtra = gNum >= 5; // gli extra esistono solo da Quarti in poi
   const par = getPartite(gKey);
   const sel = selezione[gKey] || {};
   const ris = risultati[gKey] || {};
@@ -3610,11 +3611,13 @@ function buildSezioneStampaGiornataKo(gNum, giocatori) {
     html += '<thead><tr>'
       + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5;text-align:left">Giocatore</th>'
       + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Pronostico</th>'
-      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">1° Tempo</th>'
-      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Primo Gol</th>'
-      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Marcatore</th>'
-      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Rigori</th>'
-      + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Fascia</th>'
+      + (conExtra ?
+          '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">1° Tempo</th>'
+        + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Primo Gol</th>'
+        + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Marcatore</th>'
+        + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Rigori</th>'
+        + '<th style="border:1px solid #ccc;padding:4px 6px;background:#f5f5f5">Fascia</th>'
+        : '')
       + '</tr></thead><tbody>';
 
     giocatori.slice().sort().forEach((p, idx) => {
@@ -3625,11 +3628,13 @@ function buildSezioneStampaGiornataKo(gNum, giocatori) {
       html += '<tr style="background:'+rowBg+'">'
         + '<td style="border:1px solid #ccc;padding:4px 6px;font-weight:bold">'+p+'</td>'
         + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(hasPro ? mio.h+'-'+mio.a : '–')+'</td>'
-        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+((ex.pt1h!=null&&ex.pt1a!=null) ? ex.pt1h+'-'+ex.pt1a : '–')+'</td>'
-        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.sqFirst==='nessuno'?'Nessuno':(ex.sqFirst||'–'))+'</td>'
-        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.marcatore||'–')+'</td>'
-        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.rigori==='si'?'Sì':ex.rigori==='no'?'No':'–')+'</td>'
-        + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.fascia ? ex.fascia+"'" : '–')+'</td>'
+        + (conExtra ?
+            '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+((ex.pt1h!=null&&ex.pt1a!=null) ? ex.pt1h+'-'+ex.pt1a : '–')+'</td>'
+          + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.sqFirst==='nessuno'?'Nessuno':(ex.sqFirst||'–'))+'</td>'
+          + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.marcatore||'–')+'</td>'
+          + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.rigori==='si'?'Sì':ex.rigori==='no'?'No':'–')+'</td>'
+          + '<td style="border:1px solid #ccc;padding:4px 6px;text-align:center">'+(ex.fascia ? ex.fascia+"'" : '–')+'</td>'
+          : '')
         + '</tr>';
     });
 
@@ -3642,26 +3647,26 @@ function buildSezioneStampaGiornataKo(gNum, giocatori) {
 function stampaPronosticiEliminazione() {
   const giocatori = getGiocatoriAncoraInGioco();
   if (!giocatori.length) {
-    alert('Nessun turno dai Quarti in poi è stato ancora generato: non ci sono giocatori da mostrare.');
+    alert('Nessun turno dagli Ottavi in poi è stato ancora generato: non ci sono giocatori da mostrare.');
     return;
   }
 
   let html = '<div style="font-family:serif;padding:16px;color:#000">';
   html += '<h1 style="text-align:center;font-size:1.3rem;margin-bottom:4px">'+(config.nome||'Mondiale 2026')+'</h1>';
-  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:8px;font-weight:normal">Pronostici Fase a Eliminazione — Quarti in poi</h2>';
+  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:8px;font-weight:normal">Riepilogo Pronostici — Fase a Eliminazione</h2>';
   html += '<div style="text-align:center;font-size:0.78rem;color:#555;margin-bottom:10px">Giocatori ancora in gioco ('+giocatori.length+'): '+giocatori.slice().sort().join(', ')+'</div>';
 
   let trovataSezione = false;
-  [5, 6, 7].forEach(gNum => {
+  [4, 5, 6, 7].forEach(gNum => {
     const sez = buildSezioneStampaGiornataKo(gNum, giocatori);
     if (sez) { html += sez; trovataSezione = true; }
   });
 
   if (!trovataSezione) {
-    html += '<div style="text-align:center;color:#888;margin-top:20px">Nessuna partita ancora caricata/selezionata per Quarti, Semifinali o Finale.</div>';
+    html += '<div style="text-align:center;color:#888;margin-top:20px">Nessuna partita ancora caricata/selezionata per Ottavi, Quarti, Semifinali o Finale.</div>';
   }
 
-  html += '<div style="margin-top:16px;font-size:0.7rem;color:#888">"–" indica un campo non ancora pronosticato o non applicabile.</div>';
+  html += '<div style="margin-top:16px;font-size:0.7rem;color:#888">"–" indica un campo non ancora pronosticato o non applicabile. Le colonne dei Pronostici Extra compaiono solo da Quarti in poi.</div>';
   html += '</div>';
   apriFinestraStampa(html);
 }
