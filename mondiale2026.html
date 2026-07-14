@@ -805,7 +805,7 @@
           <button class="print-btn" onclick="stampaCalendario()">📅 Calendario Sfide</button>
           <button class="print-btn" onclick="stampaTutto()">📄 Stampa Tutto</button>
           <button class="print-btn" onclick="mostraSelettoreGiornata()">📊 Pronostici Giornata</button>
-          <button class="print-btn" onclick="stampaPronosticiEliminazione()">🥊 Riepilogo Fase Eliminazione (in gioco)</button>
+          <button class="print-btn" onclick="mostraSelettoreTurnoKo()">🥊 Riepilogo Turno Eliminazione</button>
         </div>
         <div id="selettore-giornata" style="display:none;margin-top:12px">
           <div class="input-group">
@@ -813,6 +813,13 @@
             <select id="giornata-da-stampare" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Crimson Pro,serif;font-size:1rem;width:100%;outline:none"></select>
           </div>
           <button class="btn btn-gold mt8" onclick="stampaPronosticiGiornata()">🖨️ Stampa</button>
+        </div>
+        <div id="selettore-turno-ko" style="display:none;margin-top:12px">
+          <div class="input-group">
+            <label>Seleziona Turno</label>
+            <select id="turno-ko-da-stampare" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Crimson Pro,serif;font-size:1rem;width:100%;outline:none"></select>
+          </div>
+          <button class="btn btn-gold mt8" onclick="stampaTurnoKo()">🖨️ Stampa</button>
         </div>
       </div>
 
@@ -3586,7 +3593,7 @@ function getGiocatoriAncoraInGioco() {
   return [];
 }
 
-function buildSezioneStampaGiornataKo(gNum, giocatori, isPrimaSezione) {
+function buildSezioneStampaGiornataKo(gNum, giocatori) {
   const gKey = 'g' + gNum;
   const conExtra = gNum >= 5; // gli extra esistono solo da Quarti in poi
   const par = getPartite(gKey);
@@ -3595,8 +3602,7 @@ function buildSezioneStampaGiornataKo(gNum, giocatori, isPrimaSezione) {
   const selMids = Object.keys(sel).filter(mid => sel[mid]);
   if (!selMids.length) return '';
 
-  const pageBreak = isPrimaSezione ? '' : 'page-break-before:always;';
-  let html = '<h2 style="'+pageBreak+'margin-top:26px;margin-bottom:10px;font-size:1.1rem;border-bottom:2px solid #0a2e1a;padding-bottom:4px">'+(GIORNATA_LABELS[gNum]||('Giornata '+gNum))+'</h2>';
+  let html = '<h2 style="margin-top:26px;margin-bottom:10px;font-size:1.1rem;border-bottom:2px solid #0a2e1a;padding-bottom:4px">'+(GIORNATA_LABELS[gNum]||('Giornata '+gNum))+'</h2>';
 
   selMids.forEach(mid => {
     const m = par[mid] || {};
@@ -3645,29 +3651,44 @@ function buildSezioneStampaGiornataKo(gNum, giocatori, isPrimaSezione) {
   return html;
 }
 
-function stampaPronosticiEliminazione() {
-  const giocatori = getGiocatoriAncoraInGioco();
-  if (!giocatori.length) {
-    alert('Nessun turno dagli Ottavi in poi è stato ancora generato: non ci sono giocatori da mostrare.');
+// Popola il selettore con i soli turni (Ottavi/Quarti/Semifinali/Finale) che
+// sono già stati generati nel tabellone
+function mostraSelettoreTurnoKo() {
+  const sel = document.getElementById('selettore-turno-ko');
+  const select = document.getElementById('turno-ko-da-stampare');
+  const turniDisponibili = ['ottavi','quarti','semifinali','finale']
+    .filter(r => Object.keys((koData||{})[r] || {}).length > 0);
+  if (!turniDisponibili.length) {
+    alert('Nessun turno della fase a eliminazione è stato ancora generato.');
     return;
   }
+  select.innerHTML = turniDisponibili.map(r => '<option value="'+r+'">'+KO_LABELS[r]+'</option>').join('');
+  sel.style.display = sel.style.display === 'none' ? 'block' : 'none';
+}
+
+// Stampa UN SOLO turno (quello scelto nel selettore), con solo i giocatori
+// effettivamente presenti in quel turno — nessun salto pagina, un unico foglio
+function stampaTurnoKo() {
+  const round = document.getElementById('turno-ko-da-stampare').value;
+  const gNum = ROUND_TO_GNUM[round];
+  const matches = (koData||{})[round] || {};
+  const ids = Object.keys(matches);
+  if (!ids.length) { alert('Il turno "'+(KO_LABELS[round]||round)+'" non è ancora stato generato.'); return; }
+
+  const giocatori = Array.from(new Set(
+    ids.flatMap(id => [matches[id].h, matches[id].a]).filter(Boolean)
+  ));
 
   let html = '<div style="font-family:serif;padding:16px;color:#000">';
   html += '<h1 style="text-align:center;font-size:1.3rem;margin-bottom:4px">'+(config.nome||'Mondiale 2026')+'</h1>';
-  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:8px;font-weight:normal">Riepilogo Pronostici — Fase a Eliminazione</h2>';
-  html += '<div style="text-align:center;font-size:0.78rem;color:#555;margin-bottom:10px">Giocatori ancora in gioco ('+giocatori.length+'): '+giocatori.slice().sort().join(', ')+'</div>';
+  html += '<h2 style="text-align:center;font-size:1rem;color:#555;margin-bottom:8px;font-weight:normal">Riepilogo Pronostici — '+(KO_LABELS[round]||round)+'</h2>';
+  html += '<div style="text-align:center;font-size:0.78rem;color:#555;margin-bottom:10px">Giocatori ('+giocatori.length+'): '+giocatori.slice().sort().join(', ')+'</div>';
 
-  let trovataSezione = false;
-  [4, 5, 6, 7].forEach(gNum => {
-    const sez = buildSezioneStampaGiornataKo(gNum, giocatori, !trovataSezione);
-    if (sez) { html += sez; trovataSezione = true; }
-  });
+  const sez = buildSezioneStampaGiornataKo(gNum, giocatori);
+  html += sez || '<div style="text-align:center;color:#888;margin-top:20px">Nessuna partita ancora caricata/selezionata per questo turno.</div>';
 
-  if (!trovataSezione) {
-    html += '<div style="text-align:center;color:#888;margin-top:20px">Nessuna partita ancora caricata/selezionata per Ottavi, Quarti, Semifinali o Finale.</div>';
-  }
-
-  html += '<div style="margin-top:16px;font-size:0.7rem;color:#888">"–" indica un campo non ancora pronosticato o non applicabile. Le colonne dei Pronostici Extra compaiono solo da Quarti in poi.</div>';
+  html += '<div style="margin-top:16px;font-size:0.7rem;color:#888">"–" indica un campo non ancora pronosticato o non applicabile.'
+    + (gNum<5 ? ' Le colonne dei Pronostici Extra compaiono solo da Quarti in poi.' : '') + '</div>';
   html += '</div>';
   apriFinestraStampa(html);
 }
