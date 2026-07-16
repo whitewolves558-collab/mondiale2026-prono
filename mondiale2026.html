@@ -644,7 +644,7 @@
         </div>
         <div class="input-group">
           <label>Numero Giornate (fase gironi)</label>
-          <input type="number" id="cfg-giornate" value="7" min="1" max="20">
+          <input type="number" id="cfg-giornate" value="8" min="1" max="20">
         </div>
         <div class="input-group">
           <label>Numero Gironi</label>
@@ -859,13 +859,13 @@ let currentGiornataAdmin = 1;
 let currentGiornataRisAdmin = 1;
 let currentKoRound = 'ottavi';
 
-const KO_ROUNDS = ['ottavi','quarti','semifinali','finale'];
+const KO_ROUNDS = ['ottavi','quarti','semifinali','finale','terzoquarto'];
 const GIORNATA_LABELS = {
   1: 'Giornata 1', 2: 'Giornata 2', 3: 'Giornata 3',
   4: 'Ottavi di Finale', 5: 'Quarti di Finale',
-  6: 'Semifinali', 7: 'Finale'
+  6: 'Semifinali', 7: 'Finale', 8: 'Finale 3°/4° Posto'
 };
-const KO_LABELS = { ottavi:'Ottavi di Finale', quarti:'Quarti di Finale', semifinali:'Semifinali', finale:'Finale' };
+const KO_LABELS = { ottavi:'Ottavi di Finale', quarti:'Quarti di Finale', semifinali:'Semifinali', finale:'Finale', terzoquarto:'Finale 3°/4° Posto' };
 
 // ══════════════════════════════════════════════════
 // PARTITE PRECALCOLATE MONDIALE 2026
@@ -964,7 +964,7 @@ const SQUADRE_MONDIALE = [
 ];
 
 // Numero di partite atteso per ogni giornata della fase a eliminazione diretta
-const KO_NUM_PARTITE = { 4: 8, 5: 4, 6: 2, 7: 1 }; // 4=Ottavi 5=Quarti 6=Semifinali 7=Finale
+const KO_NUM_PARTITE = { 4: 8, 5: 4, 6: 2, 7: 1, 8: 1 }; // 4=Ottavi 5=Quarti 6=Semifinali 7=Finale 8=Finale 3°/4° Posto
 
 // Helper: restituisce le partite da Firebase o dal precaricato come fallback
 function getPartite(gKey) {
@@ -1713,7 +1713,7 @@ function showSection(id) {
 // selezionate dall'admin e non ancora tutte concluse: è quella su cui il
 // giocatore ha effettivamente qualcosa da pronosticare in questo momento.
 function trovaGiornataDaAprire() {
-  const max = config.giornate || 7;
+  const max = config.giornate || 8;
   for (let g = 1; g <= max; g++) {
     const gKey = 'g' + g;
     const selG = selezione[gKey] || {};
@@ -1900,7 +1900,7 @@ function renderClassifica() {
 // PRONOSTICI
 // ══════════════════════════════════════════════════
 function changeGiornata(d) {
-  const max = config.giornate||6;
+  const max = config.giornate||8;
   currentGiornata = Math.max(1, Math.min(max, currentGiornata+d));
   renderPronostici();
 }
@@ -2077,7 +2077,7 @@ async function saveAllPronostici(gKey) {
 // RISULTATI (PUBBLICA VISUALIZZAZIONE)
 // ══════════════════════════════════════════════════
 function changeGiornataRis(d) {
-  const max=config.giornate||6;
+  const max=config.giornate||8;
   currentGiornataRis=Math.max(1,Math.min(max,currentGiornataRis+d));
   renderRisultati();
 }
@@ -2144,12 +2144,12 @@ function renderKnockout() {
   }
 }
 function setKoRound(r) { currentKoRound=r; renderKnockout(); }
-const KO_ROUND_CON_EXTRA = ['quarti','semifinali','finale'];
+const KO_ROUND_CON_EXTRA = ['quarti','semifinali','finale','terzoquarto'];
 const FASCE_PRIMO_GOL = ['0-15','16-30','31-45','46-60','61-75','76-90'];
 
 // Corrispondenza tra il turno del tabellone giocatori e la giornata delle
 // partite reali dei Mondiali usata per calcolare i punti pronostico
-const ROUND_TO_GNUM = { ottavi:4, quarti:5, semifinali:6, finale:7 };
+const ROUND_TO_GNUM = { ottavi:4, quarti:5, semifinali:6, finale:7, terzoquarto:8 };
 const NEXT_ROUND    = { ottavi:'quarti', quarti:'semifinali', semifinali:'finale' };
 
 // Punti totali accumulati da un giocatore dall'inizio del Mondiale fino alla
@@ -2292,24 +2292,26 @@ function renderKoRound() {
 
   // Pulsante per generare il turno successivo con i vincitori (solo admin, turno concluso)
   if (isAdmin && completata) {
-    if (!nextRound) {
+    if (currentKoRound === 'finale') {
       const campione = mids.length===1 ? vincitoriPerAvanzamento[0] : null;
       if (campione) html += '<div class="msg msg-info" style="margin-top:12px;text-align:center;font-family:Cinzel;font-size:1rem;color:var(--oro2)">🏆 Campione del Mondiale (torneo): '+campione+'</div>';
+    } else if (currentKoRound === 'terzoquarto') {
+      const terzo = mids.length===1 ? vincitoriPerAvanzamento[0] : null;
+      if (terzo) html += '<div class="msg msg-info" style="margin-top:12px;text-align:center;font-family:Cinzel;font-size:1rem;color:var(--oro2)">🥉 Terzo posto (torneo): '+terzo+'</div>';
     } else if (pareggioIrrisolto) {
       html += '<div class="msg msg-err" style="margin-top:12px">⚠️ C\'è una parità totale irrisolvibile in almeno uno scontro: risolvi manualmente prima di generare il turno successivo.</div>';
-    } else {
+    } else if (currentKoRound === 'semifinali') {
+      html += '<button class="btn btn-gold btn-block mt8" onclick="generaProssimoTurnoKo()">🏆 Genera Finale e Finale 3°/4° Posto</button>';
+    } else if (nextRound) {
       html += '<button class="btn btn-gold btn-block mt8" onclick="generaProssimoTurnoKo()">🏆 Genera '+KO_LABELS[nextRound]+' con i vincitori</button>';
     }
   }
-
   html += '</div>';
   document.getElementById('ko-content').innerHTML = html;
 }
 
 async function generaProssimoTurnoKo() {
   const round = currentKoRound;
-  const nextRound = NEXT_ROUND[round];
-  if (!nextRound) { alert('La Finale non ha un turno successivo.'); return; }
   const gNum = ROUND_TO_GNUM[round];
   const gKey = 'g' + gNum;
   if (!giornataCompletata(gKey)) { alert('Questo turno non è ancora concluso: mancano dei risultati.'); return; }
@@ -2318,13 +2320,39 @@ async function generaProssimoTurnoKo() {
   if (!mids.length) { alert('Nessun accoppiamento presente per questo turno.'); return; }
 
   const vincitori = [];
+  const perdenti = [];
   for (const mid of mids) {
     const m = matches[mid];
     if (!m.h || !m.a) { alert('C\'è ancora una squadra/giocatore da definire in "'+(m.h||'?')+' vs '+(m.a||'?')+'".'); return; }
     const { vincitore } = calcolaVincitoreKo(m.h, m.a, gNum);
     if (!vincitore) { alert('Parità totale irrisolvibile tra '+m.h+' e '+m.a+'. Risolvi manualmente prima di continuare.'); return; }
     vincitori.push(vincitore);
+    perdenti.push(vincitore === m.h ? m.a : m.h);
   }
+
+  // Dalle Semifinali si generano DUE turni: la Finale (vincenti) e la
+  // Finale 3°/4° Posto (perdenti), sempre con accoppiamento adiacente
+  if (round === 'semifinali') {
+    if (Object.keys(koData.finale||{}).length || Object.keys(koData.terzoquarto||{}).length) {
+      if (!confirm('"Finale" e/o "Finale 3°/4° Posto" contengono già degli accoppiamenti: sovrascriverli?')) return;
+    }
+    const nuovaFinale = {};
+    for (let i=0; i<vincitori.length; i+=2) nuovaFinale['k'+(i/2+1)] = { h: vincitori[i], a: vincitori[i+1] || null };
+    const nuovoTerzoQuarto = {};
+    for (let i=0; i<perdenti.length; i+=2) nuovoTerzoQuarto['k'+(i/2+1)] = { h: perdenti[i], a: perdenti[i+1] || null };
+    try {
+      await fbSet('/knockout/finale', nuovaFinale);
+      await fbSet('/knockout/terzoquarto', nuovoTerzoQuarto);
+      koData.finale = nuovaFinale;
+      koData.terzoquarto = nuovoTerzoQuarto;
+      currentKoRound = 'finale';
+      renderKnockout();
+    } catch(e) { alert('❌ Errore durante il salvataggio dei turni successivi.'); }
+    return;
+  }
+
+  const nextRound = NEXT_ROUND[round];
+  if (!nextRound) { alert('Questo turno non ha un turno successivo da generare.'); return; }
 
   if (Object.keys(koData[nextRound]||{}).length) {
     if (!confirm('Il turno "'+KO_LABELS[nextRound]+'" contiene già degli accoppiamenti: sovrascriverli con i nuovi vincitori?')) return;
@@ -2386,7 +2414,7 @@ async function changeCode() {
 
 function renderAdminSetup() {
   document.getElementById('cfg-nome').value=config.nome||'';
-  document.getElementById('cfg-giornate').value=config.giornate||6;
+  document.getElementById('cfg-giornate').value=config.giornate||8;
   document.getElementById('cfg-ngironi').value=config.ngironi||4;
   renderGironiSetup();
 }
@@ -2407,7 +2435,7 @@ async function saveConfig() {
   for (let i=0;i<n;i++) gironi.push(document.getElementById('gname_'+i)?.value||'Girone '+'ABCDEFGH'[i]);
   config={
     nome:document.getElementById('cfg-nome').value||'Mondiale 2026',
-    giornate:parseInt(document.getElementById('cfg-giornate').value)||6,
+    giornate:parseInt(document.getElementById('cfg-giornate').value)||8,
     ngironi:n, gironi
   };
   try {
@@ -2477,7 +2505,7 @@ async function removePlayer(name) {
 // ADMIN – PARTITE
 // ══════════════════════════════════════════════════
 function changeGiornataAdmin(d) {
-  const max=config.giornate||7;
+  const max=config.giornate||8;
   currentGiornataAdmin=Math.max(1,Math.min(max,currentGiornataAdmin+d));
   renderPartiteEditor();
 }
@@ -2751,7 +2779,7 @@ async function savePartiteKO() {
 // ADMIN – RISULTATI
 // ══════════════════════════════════════════════════
 function changeGiornataRisAdmin(d) {
-  const max=config.giornate||6;
+  const max=config.giornate||8;
   currentGiornataRisAdmin=Math.max(1,Math.min(max,currentGiornataRisAdmin+d));
   renderRisAdmin();
 }
@@ -3168,7 +3196,7 @@ function togglePlayerAccordion(id) {
 // ══════════════════════════════════════════════════
 
 function renderVisibilitaAdmin() {
-  const maxG = config.giornate || 7;
+  const maxG = config.giornate || 8;
   let html = '';
   for (let g = 1; g <= maxG; g++) {
     const gKey = 'g' + g;
@@ -3656,7 +3684,7 @@ function buildSezioneStampaGiornataKo(gNum, giocatori) {
 function mostraSelettoreTurnoKo() {
   const sel = document.getElementById('selettore-turno-ko');
   const select = document.getElementById('turno-ko-da-stampare');
-  const turniDisponibili = ['ottavi','quarti','semifinali','finale']
+  const turniDisponibili = ['ottavi','quarti','semifinali','finale','terzoquarto']
     .filter(r => Object.keys((koData||{})[r] || {}).length > 0);
   if (!turniDisponibili.length) {
     alert('Nessun turno della fase a eliminazione è stato ancora generato.');
