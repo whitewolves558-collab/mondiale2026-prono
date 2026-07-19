@@ -636,6 +636,7 @@
         <button class="inner-tab" onclick="adminTab('fifa-live-admin')">🔴 Live FIFA</button>
         <button class="inner-tab" onclick="adminTab('notifiche-admin')">🔔 Notifiche</button>
         <button class="inner-tab" onclick="adminTab('knockout-admin')">Knockout</button>
+        <button class="inner-tab" onclick="adminTab('sposta-pronostici')">🔀 Correggi Pronostici</button>
       </div>
       <div id="admin-setup" class="admin-section">
         <div class="input-group">
@@ -826,6 +827,26 @@
       <div id="admin-knockout-admin" class="admin-section" style="display:none">
         <div id="ko-admin-content"></div>
         <div id="ko-admin-msg" class="mt8"></div>
+      </div>
+
+      <div id="admin-sposta-pronostici" class="admin-section" style="display:none">
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px;font-family:Oswald;letter-spacing:0.08em;line-height:1.5">
+          Usa questo strumento se un giocatore ha inserito i pronostici nella giornata sbagliata (es. "Finale" invece di "Finale 3°/4° Posto"). Sposta i suoi pronostici dalla giornata di origine a quella corretta.
+        </div>
+        <div class="input-group">
+          <label>Giornata di origine (dove sono finiti per sbaglio)</label>
+          <select id="sp-giornata-origine" onchange="renderGiocatoriSpostaPronostici()" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Oswald;font-size:0.85rem;width:100%;outline:none"></select>
+        </div>
+        <div class="input-group">
+          <label>Giornata di destinazione (dove dovrebbero essere)</label>
+          <select id="sp-giornata-destinazione" style="background:rgba(201,168,76,0.06);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-family:Oswald;font-size:0.85rem;width:100%;outline:none"></select>
+        </div>
+        <div class="input-group">
+          <label>Giocatori da spostare</label>
+          <div id="sp-giocatori-list" style="max-height:220px;overflow-y:auto;background:rgba(201,168,76,0.04);border:1px solid var(--border);border-radius:8px;padding:8px"></div>
+        </div>
+        <button class="btn btn-gold mt8" onclick="spostaPronosticiTraGiornate()">🔀 Sposta Pronostici Selezionati</button>
+        <div id="sp-msg" class="mt8"></div>
       </div>
     </div>
   </div>
@@ -4055,7 +4076,69 @@ function adminTab(id) {
   if (id==='visibilita-admin') renderVisibilitaAdmin();
   // notifiche-admin non richiede init
   if (id==='fifa-live-admin') renderFifaLiveAdmin();
+  if (id==='sposta-pronostici') renderSpostaPronosticiAdmin();
   // stampa-admin non richiede inizializzazione
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN – CORREGGI PRONOSTICI (sposta da una giornata all'altra)
+// ══════════════════════════════════════════════════
+function renderSpostaPronosticiAdmin() {
+  const max = config.giornate || 8;
+  const origSel = document.getElementById('sp-giornata-origine');
+  const destSel = document.getElementById('sp-giornata-destinazione');
+  let opts = '';
+  for (let g = 1; g <= max; g++) opts += '<option value="'+g+'">'+(GIORNATA_LABELS[g]||('Giornata '+g))+'</option>';
+  origSel.innerHTML = opts;
+  destSel.innerHTML = opts;
+  // Preseleziona un caso comune: origine Finale (7) → destinazione Finale 3°/4° Posto (8)
+  if (max >= 8) { origSel.value = '7'; destSel.value = '8'; }
+  renderGiocatoriSpostaPronostici();
+}
+
+function renderGiocatoriSpostaPronostici() {
+  const gOrigine = 'g' + document.getElementById('sp-giornata-origine').value;
+  const list = document.getElementById('sp-giocatori-list');
+  const pros = pronostici[gOrigine] || {};
+  const nomi = Object.keys(pros).sort();
+  if (!nomi.length) {
+    list.innerHTML = '<div style="color:var(--grigio);font-family:Oswald;font-size:0.8rem;padding:6px">Nessun pronostico salvato in questa giornata.</div>';
+    return;
+  }
+  list.innerHTML = nomi.map(p =>
+    '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-family:Oswald;font-size:0.85rem;color:var(--text)">'
+    + '<input type="checkbox" class="sp-check" value="'+p+'"> '+p
+    + '</label>'
+  ).join('');
+}
+
+async function spostaPronosticiTraGiornate() {
+  const gOrigine = 'g' + document.getElementById('sp-giornata-origine').value;
+  const gDest = 'g' + document.getElementById('sp-giornata-destinazione').value;
+  const msgEl = document.getElementById('sp-msg');
+  if (gOrigine === gDest) { msgEl.innerHTML = '<div class="msg msg-err">Origine e destinazione non possono coincidere.</div>'; return; }
+  const selezionati = Array.from(document.querySelectorAll('.sp-check:checked')).map(cb => cb.value);
+  if (!selezionati.length) { msgEl.innerHTML = '<div class="msg msg-err">Seleziona almeno un giocatore.</div>'; return; }
+
+  if (!confirm('Spostare i pronostici di '+selezionati.length+' giocatore/i da "'+(GIORNATA_LABELS[parseInt(gOrigine.replace("g",""))])+'" a "'+(GIORNATA_LABELS[parseInt(gDest.replace("g",""))])+'"? Verranno rimossi dalla giornata di origine.')) return;
+
+  try {
+    const prosOrigine = pronostici[gOrigine] || {};
+    for (const p of selezionati) {
+      const dati = prosOrigine[p];
+      if (!dati) continue;
+      await fbSet('/pronostici/'+gDest+'/'+p, dati);
+      await fbDelete('/pronostici/'+gOrigine+'/'+p);
+      pronostici[gDest] = pronostici[gDest] || {};
+      pronostici[gDest][p] = dati;
+      if (pronostici[gOrigine]) delete pronostici[gOrigine][p];
+    }
+    msgEl.innerHTML = '<div class="msg msg-ok">✅ Spostati i pronostici di '+selezionati.length+' giocatore/i.</div>';
+    setTimeout(()=>msgEl.innerHTML='',4000);
+    renderGiocatoriSpostaPronostici();
+  } catch(e) {
+    msgEl.innerHTML = '<div class="msg msg-err">❌ Errore durante lo spostamento.</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════
