@@ -4120,20 +4120,43 @@ async function spostaPronosticiTraGiornate() {
   const selezionati = Array.from(document.querySelectorAll('.sp-check:checked')).map(cb => cb.value);
   if (!selezionati.length) { msgEl.innerHTML = '<div class="msg msg-err">Seleziona almeno un giocatore.</div>'; return; }
 
+  const matchesDest = getPartite(gDest);
+  const midsDest = Object.keys(matchesDest);
+  if (!midsDest.length) {
+    msgEl.innerHTML = '<div class="msg msg-err">Nessuna partita caricata nella giornata di destinazione: caricala prima in Admin → Partite.</div>';
+    return;
+  }
+
   if (!confirm('Spostare i pronostici di '+selezionati.length+' giocatore/i da "'+(GIORNATA_LABELS[parseInt(gOrigine.replace("g",""))])+'" a "'+(GIORNATA_LABELS[parseInt(gDest.replace("g",""))])+'"? Verranno rimossi dalla giornata di origine.')) return;
 
   try {
     const prosOrigine = pronostici[gOrigine] || {};
+    let spostati = 0;
     for (const p of selezionati) {
       const dati = prosOrigine[p];
       if (!dati) continue;
-      await fbSet('/pronostici/'+gDest+'/'+p, dati);
+      const midsOrigineDati = Object.keys(dati);
+
+      // Le partite di Finale e Finale 3°/4° Posto hanno ID diversi anche se
+      // sono entrambe "1 sola partita": va rimappato l'ID, non solo copiato l'oggetto.
+      const nuoviDati = {};
+      if (midsOrigineDati.length === 1 && midsDest.length === 1) {
+        nuoviDati[midsDest[0]] = dati[midsOrigineDati[0]];
+      } else {
+        midsOrigineDati.forEach((mid, idx) => {
+          const midTarget = matchesDest[mid] ? mid : midsDest[idx];
+          if (midTarget) nuoviDati[midTarget] = dati[mid];
+        });
+      }
+
+      await fbSet('/pronostici/'+gDest+'/'+p, nuoviDati);
       await fbDelete('/pronostici/'+gOrigine+'/'+p);
       pronostici[gDest] = pronostici[gDest] || {};
-      pronostici[gDest][p] = dati;
+      pronostici[gDest][p] = nuoviDati;
       if (pronostici[gOrigine]) delete pronostici[gOrigine][p];
+      spostati++;
     }
-    msgEl.innerHTML = '<div class="msg msg-ok">✅ Spostati i pronostici di '+selezionati.length+' giocatore/i.</div>';
+    msgEl.innerHTML = '<div class="msg msg-ok">✅ Spostati (con ID partita corretto) i pronostici di '+spostati+' giocatore/i.</div>';
     setTimeout(()=>msgEl.innerHTML='',4000);
     renderGiocatoriSpostaPronostici();
   } catch(e) {
